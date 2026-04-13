@@ -13,7 +13,6 @@ const (
 	defaultFailureThreshold     = 3
 	defaultWiFiInterface        = "wlan0"
 	defaultMaintenanceIface     = "usb0"
-	defaultFramebufferDevice    = "/dev/fb0"
 	defaultRTCWakealarmPath     = "/sys/class/rtc/rtc0/wakealarm"
 	defaultPowerSupplyPath      = "/sys/class/power_supply"
 	defaultDisplayWidth         = 1872
@@ -31,38 +30,40 @@ const (
 )
 
 type Config struct {
-	BaseURL                   string        `json:"base_url"`
-	DeviceID                  string        `json:"device_id,omitempty"`
-	AccessToken               string        `json:"access_token,omitempty"`
-	RefreshFallbackSeconds    int           `json:"refresh_fallback_seconds,omitempty"`
-	RefreshMinSeconds         int           `json:"refresh_min_seconds,omitempty"`
-	RefreshMaxSeconds         int           `json:"refresh_max_seconds,omitempty"`
-	WiFiTimeoutSeconds        int           `json:"wifi_timeout_seconds,omitempty"`
-	DisableWiFiBetweenUpdates bool          `json:"disable_wifi_between_updates,omitempty"`
-	FullRefreshEvery          int           `json:"full_refresh_every,omitempty"`
-	BootGraceSeconds          int           `json:"boot_grace_seconds,omitempty"`
-	FailureThreshold          int           `json:"failure_threshold,omitempty"`
-	WiFiInterface             string        `json:"wifi_interface,omitempty"`
-	MaintenanceInterface      string        `json:"maintenance_interface,omitempty"`
-	FramebufferDevice         string        `json:"framebuffer_device,omitempty"`
-	RTCWakealarmPath          string        `json:"rtc_wakealarm_path,omitempty"`
-	PowerSupplyPath           string        `json:"power_supply_path,omitempty"`
-	DisplayWidth              int           `json:"display_width,omitempty"`
-	DisplayHeight             int           `json:"display_height,omitempty"`
-	RendererCommand           []string      `json:"renderer_command,omitempty"`
-	WiFiUpCommand             []string      `json:"wifi_up_command,omitempty"`
-	WiFiDownCommand           []string      `json:"wifi_down_command,omitempty"`
-	SuspendCommand            []string      `json:"suspend_command,omitempty"`
-	ConnectivityCheckURL      string        `json:"connectivity_check_url,omitempty"`
-	FBInkBinary               string        `json:"fbink_binary,omitempty"`
-	FBDepthBinary             string        `json:"fbdepth_binary,omitempty"`
-	FBInkBitDepth             int           `json:"fbink_bit_depth,omitempty"`
-	FBInkRotation             int           `json:"fbink_rotation,omitempty"`
-	FBInkWaveformPartial      string        `json:"fbink_waveform_partial,omitempty"`
-	FBInkWaveformFull         string        `json:"fbink_waveform_full,omitempty"`
-	FBInkDitherMode           string        `json:"fbink_dither_mode,omitempty"`
-	FBInkNoViewport           bool          `json:"fbink_no_viewport,omitempty"`
-	DisplayPower              *DisplayPower `json:"display_power,omitempty"`
+	BaseURL                   string `json:"base_url"`
+	DeviceID                  string `json:"device_id,omitempty"`
+	AccessToken               string `json:"access_token,omitempty"`
+	RefreshFallbackSeconds    int    `json:"refresh_fallback_seconds,omitempty"`
+	RefreshMinSeconds         int    `json:"refresh_min_seconds,omitempty"`
+	RefreshMaxSeconds         int    `json:"refresh_max_seconds,omitempty"`
+	WiFiTimeoutSeconds        int    `json:"wifi_timeout_seconds,omitempty"`
+	DisableWiFiBetweenUpdates bool   `json:"disable_wifi_between_updates,omitempty"`
+	FullRefreshEvery          int    `json:"full_refresh_every,omitempty"`
+	BootGraceSeconds          int    `json:"boot_grace_seconds,omitempty"`
+	FailureThreshold          int    `json:"failure_threshold,omitempty"`
+	WiFiInterface             string `json:"wifi_interface,omitempty"`
+	MaintenanceInterface      string `json:"maintenance_interface,omitempty"`
+	// Reserved for future low-level renderer integration. The current FBInk
+	// render path does not use this field.
+	FramebufferDevice    string        `json:"framebuffer_device,omitempty"`
+	RTCWakealarmPath     string        `json:"rtc_wakealarm_path,omitempty"`
+	PowerSupplyPath      string        `json:"power_supply_path,omitempty"`
+	DisplayWidth         int           `json:"display_width,omitempty"`
+	DisplayHeight        int           `json:"display_height,omitempty"`
+	RendererCommand      []string      `json:"renderer_command,omitempty"`
+	WiFiUpCommand        []string      `json:"wifi_up_command,omitempty"`
+	WiFiDownCommand      []string      `json:"wifi_down_command,omitempty"`
+	SuspendCommand       []string      `json:"suspend_command,omitempty"`
+	ConnectivityCheckURL string        `json:"connectivity_check_url,omitempty"`
+	FBInkBinary          string        `json:"fbink_binary,omitempty"`
+	FBDepthBinary        string        `json:"fbdepth_binary,omitempty"`
+	FBInkBitDepth        int           `json:"fbink_bit_depth,omitempty"`
+	FBInkRotation        int           `json:"fbink_rotation,omitempty"`
+	FBInkWaveformPartial string        `json:"fbink_waveform_partial,omitempty"`
+	FBInkWaveformFull    string        `json:"fbink_waveform_full,omitempty"`
+	FBInkDitherMode      string        `json:"fbink_dither_mode,omitempty"`
+	FBInkNoViewport      bool          `json:"fbink_no_viewport,omitempty"`
+	DisplayPower         *DisplayPower `json:"display_power,omitempty"`
 }
 
 type DisplayPower struct {
@@ -204,13 +205,6 @@ func (c Config) maintenanceInterface() string {
 		return c.MaintenanceInterface
 	}
 	return defaultMaintenanceIface
-}
-
-func (c Config) framebufferDevice() string {
-	if c.FramebufferDevice != "" {
-		return c.FramebufferDevice
-	}
-	return defaultFramebufferDevice
 }
 
 func (c Config) rtcWakealarmPath() string {

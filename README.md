@@ -41,7 +41,6 @@ Example:
   "failure_threshold": 3,
   "wifi_interface": "wlan0",
   "maintenance_interface": "usb0",
-  "framebuffer_device": "/dev/fb0",
   "rtc_wakealarm_path": "/sys/class/rtc/rtc0/wakealarm",
   "power_supply_path": "/sys/class/power_supply",
   "fbink_binary": "fbink",
@@ -60,6 +59,7 @@ Optional advanced fields:
 - `wifi_up_command`, `wifi_down_command`, `suspend_command`: override platform commands if your RM1 build differs.
 - `connectivity_check_url`: override the URL used while waiting for Wi-Fi to associate.
 - `fbink_dither_mode`: optional FBInk hardware dithering mode if you want to trade tone smoothness for a different update look.
+- `framebuffer_device`: reserved for future low-level renderer wiring. The current default FBInk path ignores it.
 
 ## Commands
 

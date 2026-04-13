@@ -80,16 +80,24 @@ func scheduleWakeAlarm(cfg Config, interval time.Duration) error {
 }
 
 func scheduleTransientRun(interval time.Duration) error {
-	seconds := int(interval.Seconds())
-	if seconds <= 0 {
-		seconds = int(defaultRefreshFallback.Seconds())
-	}
 	exePath, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	return runCommand([]string{
+	return scheduleTransientRunWithRunner(runCommand, exePath, interval)
+}
+
+func scheduleTransientRunWithRunner(run func([]string) error, exePath string, interval time.Duration) error {
+	seconds := int(interval.Seconds())
+	if seconds <= 0 {
+		seconds = int(defaultRefreshFallback.Seconds())
+	}
+
+	// Keep a single pending awake-mode run and replace any stale schedule with
+	// the latest interval selected by the current cycle.
+	return run([]string{
 		"systemd-run",
+		"--replace",
 		"--unit=trmnl-rm1-next",
 		"--on-active=" + strconv.Itoa(seconds),
 		"--property=Type=oneshot",

@@ -11,12 +11,36 @@ import (
 	"time"
 )
 
+type runtimeModeDeps struct {
+	stat             func(string) (os.FileInfo, error)
+	usbNetworkActive func(Config) (bool, error)
+	readUptime       func() (time.Duration, error)
+}
+
 func determineRuntimeMode(paths Paths, cfg Config, state State, now time.Time) (RuntimeMode, error) {
-	if _, err := os.Stat(paths.MaintenanceSentinel); err == nil {
+	return determineRuntimeModeWithDeps(paths, cfg, state, runtimeModeDeps{
+		stat:             os.Stat,
+		usbNetworkActive: usbNetworkActive,
+		readUptime:       readUptime,
+	})
+}
+
+func determineRuntimeModeWithDeps(paths Paths, cfg Config, state State, deps runtimeModeDeps) (RuntimeMode, error) {
+	if deps.stat == nil {
+		deps.stat = os.Stat
+	}
+	if deps.usbNetworkActive == nil {
+		deps.usbNetworkActive = usbNetworkActive
+	}
+	if deps.readUptime == nil {
+		deps.readUptime = readUptime
+	}
+
+	if _, err := deps.stat(paths.MaintenanceSentinel); err == nil {
 		return RuntimeMode{Name: "maintenance", MaintenanceReason: "sentinel-file", ShouldSuspend: false}, nil
 	}
 
-	active, err := usbNetworkActive(cfg)
+	active, err := deps.usbNetworkActive(cfg)
 	if err != nil {
 		return RuntimeMode{}, err
 	}
@@ -24,7 +48,7 @@ func determineRuntimeMode(paths Paths, cfg Config, state State, now time.Time) (
 		return RuntimeMode{Name: "maintenance", MaintenanceReason: "usb-network", ShouldSuspend: false}, nil
 	}
 
-	uptime, err := readUptime()
+	uptime, err := deps.readUptime()
 	if err != nil {
 		return RuntimeMode{}, err
 	}
