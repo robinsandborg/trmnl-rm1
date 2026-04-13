@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "prd": {
+      "source": "snarktank/ralph",
+      "sourceType": "github",
+      "computedHash": "e8445eff7538ffd81616cbc2b22c2158320d30b557d0d75ee189bd6fd8530d66"
+    }
+  }
+}
