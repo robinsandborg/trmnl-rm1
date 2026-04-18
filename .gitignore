@@ -1,3 +1,6 @@
 .gocache/
 .gomodcache/
-trmnl-rm1
+/trmnl-rm1
+build/
+deploy/config.json
+.DS_Store

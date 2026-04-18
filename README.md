@@ -84,6 +84,10 @@ trmnl-rm1 restore-stock
 - Creating `~/.config/trmnl-rm1/maintenance` also forces maintenance mode.
 - After repeated failed cycles, the client stops suspending and schedules future runs while awake so recovery remains possible.
 
+## Operations
+
+Day-to-day commands for SSH'ing in, pushing new builds, forcing a refresh, restoring the tablet, and recovering from a stuck state live in [docs/operations.md](docs/operations.md).
+
 ## Logs And State
 
 - Config: `~/.config/trmnl-rm1/config.json`

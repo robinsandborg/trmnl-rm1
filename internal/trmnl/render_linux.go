@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
+
+	_ "golang.org/x/image/bmp"
 	"math"
 	"strconv"
 	"strings"
@@ -19,13 +22,30 @@ func renderImage(cfg Config, imageBytes []byte, outputPath string, mode RefreshM
 	if err != nil {
 		return err
 	}
-	if err := writePNG(outputPath, prepared); err != nil {
+	final := applyImageRotation(prepared, cfg)
+	if err := writePNG(outputPath, final); err != nil {
 		return err
 	}
 	if len(cfg.RendererCommand) > 0 {
 		return runCommand(expandRendererCommand(cfg.RendererCommand, outputPath, mode))
 	}
 	return renderWithFBInk(cfg, outputPath, mode)
+}
+
+// applyImageRotation rotates the prepared landscape image into the
+// framebuffer's native orientation. RM1's panel is 1404x1872 portrait; if
+// fbdepth can't rotate the framebuffer (as on RM1), we rotate the image
+// ourselves by fbink_rotation quarter-turns clockwise.
+func applyImageRotation(src image.Image, cfg Config) image.Image {
+	if !cfg.FBInkSkipRotation {
+		return src
+	}
+	n := ((cfg.fbinkRotation() % 4) + 4) % 4
+	out := src
+	for i := 0; i < n; i++ {
+		out = rotate90CW(out)
+	}
+	return out
 }
 
 func prepareLandscapeImage(cfg Config, imageBytes []byte) (*image.Gray, error) {
@@ -123,13 +143,27 @@ func renderWithFBInk(cfg Config, imagePath string, mode RefreshMode) error {
 }
 
 func prepareFBInkFramebuffer(cfg Config) error {
-	return runCommand([]string{
+	if err := runCommand([]string{
 		cfg.fbdepthBinary(),
 		"-d",
 		strconv.Itoa(cfg.fbinkBitDepth()),
+	}); err != nil {
+		return err
+	}
+	if cfg.FBInkSkipRotation {
+		return nil
+	}
+	if err := runCommand([]string{
+		cfg.fbdepthBinary(),
 		"-R",
 		strconv.Itoa(cfg.fbinkRotation()),
-	})
+	}); err != nil {
+		if strings.Contains(err.Error(), "not supported on your device") {
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 func fbinkWaveformForMode(cfg Config, mode RefreshMode) string {
