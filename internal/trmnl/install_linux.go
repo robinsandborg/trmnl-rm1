@@ -118,10 +118,17 @@ WantedBy=multi-user.target
 }
 
 func renderResumeHook() string {
+	// --no-block is critical: systemctl start on a Type=oneshot service
+	// otherwise blocks until ExecStart exits. Blocking inside a
+	// system-sleep hook holds the current suspend/resume lifecycle open,
+	// so when run-once eventually calls `systemctl suspend` again it
+	// nests inside the not-yet-unwound outer suspend. The next wake then
+	// tears down the outer wrapper without ever firing post-hooks, and
+	// the appliance service never starts again.
 	return `#!/bin/sh
 case "$1" in
   post)
-    /bin/systemctl start trmnl-rm1-appliance.service >/dev/null 2>&1 || true
+    /bin/systemctl start --no-block trmnl-rm1-appliance.service >/dev/null 2>&1 || true
     ;;
 esac
 `
