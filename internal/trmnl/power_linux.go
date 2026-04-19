@@ -102,6 +102,7 @@ func scheduleTransientRunWithRunner(run func([]string) error, exePath string, in
 		"--unit=trmnl-rm1-next",
 		"--on-active=" + strconv.Itoa(seconds),
 		"--property=Type=oneshot",
+		"--property=Environment=HOME=/home/root",
 		exePath,
 		"run-once",
 	})

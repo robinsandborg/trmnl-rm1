@@ -104,6 +104,7 @@ Wants=network.target
 
 [Service]
 Type=oneshot
+Environment=HOME=/home/root
 ExecStart=%s run-once
 User=root
 
