@@ -67,10 +67,14 @@ func (a *App) runInstall(paths Paths, args []string) error {
 	if err := runCommand([]string{"systemctl", "enable", applianceServiceName}); err != nil {
 		return err
 	}
-	if err := runCommand([]string{"systemctl", "start", applianceServiceName}); err != nil {
+	// Persist stock-service metadata before the first run. `systemctl start`
+	// on a oneshot service blocks until the service exits, and run-once
+	// saves its own state at the end of that run. If we save after the start
+	// call instead, we overwrite whatever run-once just persisted.
+	if err := saveState(paths, state); err != nil {
 		return err
 	}
-	return saveState(paths, state)
+	return runCommand([]string{"systemctl", "start", applianceServiceName})
 }
 
 func (a *App) runRestore(paths Paths) error {
