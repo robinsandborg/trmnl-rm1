@@ -93,11 +93,12 @@ func scheduleTransientRunWithRunner(run func([]string) error, exePath string, in
 		seconds = int(defaultRefreshFallback.Seconds())
 	}
 
-	// Keep a single pending awake-mode run and replace any stale schedule with
-	// the latest interval selected by the current cycle.
+	// Replace any stale schedule from a previous cycle. Older systemd versions
+	// (RM1) lack `systemd-run --replace`, so we stop the unit first and ignore
+	// any "not loaded" error.
+	_ = run([]string{"systemctl", "stop", "trmnl-rm1-next.timer", "trmnl-rm1-next.service"})
 	return run([]string{
 		"systemd-run",
-		"--replace",
 		"--unit=trmnl-rm1-next",
 		"--on-active=" + strconv.Itoa(seconds),
 		"--property=Type=oneshot",

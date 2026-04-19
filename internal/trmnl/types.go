@@ -63,6 +63,7 @@ type Config struct {
 	FBInkWaveformFull    string        `json:"fbink_waveform_full,omitempty"`
 	FBInkDitherMode      string        `json:"fbink_dither_mode,omitempty"`
 	FBInkNoViewport      bool          `json:"fbink_no_viewport,omitempty"`
+	FBInkSkipRotation    bool          `json:"fbink_skip_rotation,omitempty"`
 	DisplayPower         *DisplayPower `json:"display_power,omitempty"`
 }
 
