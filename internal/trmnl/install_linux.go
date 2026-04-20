@@ -67,10 +67,14 @@ func (a *App) runInstall(paths Paths, args []string) error {
 	if err := runCommand([]string{"systemctl", "enable", applianceServiceName}); err != nil {
 		return err
 	}
-	if err := runCommand([]string{"systemctl", "start", applianceServiceName}); err != nil {
+	// Persist stock-service metadata before the first run. `systemctl start`
+	// on a oneshot service blocks until the service exits, and run-once
+	// saves its own state at the end of that run. If we save after the start
+	// call instead, we overwrite whatever run-once just persisted.
+	if err := saveState(paths, state); err != nil {
 		return err
 	}
-	return saveState(paths, state)
+	return runCommand([]string{"systemctl", "start", applianceServiceName})
 }
 
 func (a *App) runRestore(paths Paths) error {
@@ -104,6 +108,7 @@ Wants=network.target
 
 [Service]
 Type=oneshot
+Environment=HOME=/home/root
 ExecStart=%s run-once
 User=root
 
@@ -113,10 +118,17 @@ WantedBy=multi-user.target
 }
 
 func renderResumeHook() string {
+	// --no-block is critical: systemctl start on a Type=oneshot service
+	// otherwise blocks until ExecStart exits. Blocking inside a
+	// system-sleep hook holds the current suspend/resume lifecycle open,
+	// so when run-once eventually calls `systemctl suspend` again it
+	// nests inside the not-yet-unwound outer suspend. The next wake then
+	// tears down the outer wrapper without ever firing post-hooks, and
+	// the appliance service never starts again.
 	return `#!/bin/sh
 case "$1" in
   post)
-    /bin/systemctl start trmnl-rm1-appliance.service >/dev/null 2>&1 || true
+    /bin/systemctl start --no-block trmnl-rm1-appliance.service >/dev/null 2>&1 || true
     ;;
 esac
 `
