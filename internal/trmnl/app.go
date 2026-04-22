@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -126,7 +127,7 @@ func (a *App) runOnce(paths Paths) error {
 		}
 	}()
 
-	terminal, imageBytes, resolvedImageURL, interval, err := fetchCyclePayload(client, cfg)
+	terminal, imageBytes, resolvedImageURL, interval, err := fetchCyclePayload(client, cfg, battery)
 	if err != nil {
 		ce := classifyCycleError("http", err)
 		return a.finishCycle(paths, cfg, state, CycleLog{
@@ -305,7 +306,7 @@ func (a *App) finishCycle(paths Paths, cfg Config, state State, entry CycleLog, 
 	return err
 }
 
-func fetchCyclePayload(client *http.Client, cfg Config) (TerminalResponse, []byte, string, time.Duration, error) {
+func fetchCyclePayload(client *http.Client, cfg Config, battery *BatterySample) (TerminalResponse, []byte, string, time.Duration, error) {
 	deviceID, err := resolveDeviceID(cfg)
 	if err != nil {
 		return TerminalResponse{}, nil, "", 0, err
@@ -321,6 +322,9 @@ func fetchCyclePayload(client *http.Client, cfg Config) (TerminalResponse, []byt
 		req.Header.Set("access-token", cfg.AccessToken)
 	}
 	req.Header.Set("User-Agent", "trmnl-rm1/0.1.0")
+	if v := batteryVoltageHeader(battery); v != "" {
+		req.Header.Set("Battery-Voltage", v)
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -417,4 +421,19 @@ func sha256Sum(data []byte) [32]byte {
 
 func shouldUseFullRefresh(renderedUpdates, fullRefreshEvery int) bool {
 	return fullRefreshEvery > 0 && (renderedUpdates+1)%fullRefreshEvery == 0
+}
+
+// batteryVoltageHeader converts a BatterySample's microvolt reading to a
+// volts string suitable for the Battery-Voltage request header. Returns ""
+// when the sample is unavailable or the value cannot be parsed, so callers
+// can omit the header on platforms that don't expose sysfs battery data.
+func batteryVoltageHeader(b *BatterySample) string {
+	if b == nil || b.VoltageMicroV == "" {
+		return ""
+	}
+	microV, err := strconv.ParseInt(b.VoltageMicroV, 10, 64)
+	if err != nil {
+		return ""
+	}
+	return strconv.FormatFloat(float64(microV)/1e6, 'f', 3, 64)
 }
