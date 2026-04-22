@@ -44,6 +44,7 @@ func TestFetchCyclePayloadUsesBYOSHeadersAndResolvesRelativeImageURL(t *testing.
 	pngBytes := makeTestPNG(t)
 	var gotID string
 	var gotAccessToken string
+	var gotBatteryVoltage string
 
 	client := &http.Client{
 		Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -51,6 +52,7 @@ func TestFetchCyclePayloadUsesBYOSHeadersAndResolvesRelativeImageURL(t *testing.
 			case "http://larapaper.test/api/display":
 				gotID = r.Header.Get("ID")
 				gotAccessToken = r.Header.Get("access-token")
+				gotBatteryVoltage = r.Header.Get("Battery-Voltage")
 				return jsonResponse(`{"image_url":"/images/current.png","filename":"screen.png","refresh_rate":900}`), nil
 			case "http://larapaper.test/images/current.png":
 				return binaryResponse("image/png", pngBytes), nil
@@ -70,8 +72,9 @@ func TestFetchCyclePayloadUsesBYOSHeadersAndResolvesRelativeImageURL(t *testing.
 		DeviceID:    "AA:BB:CC:DD:EE:FF",
 		AccessToken: "secret-token",
 	}
+	battery := &BatterySample{VoltageMicroV: "3950000"}
 
-	terminal, imageBytes, imageURL, interval, err := fetchCyclePayload(client, cfg)
+	terminal, imageBytes, imageURL, interval, err := fetchCyclePayload(client, cfg, battery)
 	if err != nil {
 		t.Fatalf("fetchCyclePayload error = %v", err)
 	}
@@ -81,6 +84,9 @@ func TestFetchCyclePayloadUsesBYOSHeadersAndResolvesRelativeImageURL(t *testing.
 	}
 	if gotAccessToken != cfg.AccessToken {
 		t.Fatalf("access-token header = %q, want %q", gotAccessToken, cfg.AccessToken)
+	}
+	if gotBatteryVoltage != "3.95" {
+		t.Fatalf("Battery-Voltage header = %q, want %q", gotBatteryVoltage, "3.95")
 	}
 	if terminal.Filename != "screen.png" {
 		t.Fatalf("filename = %q", terminal.Filename)
@@ -93,6 +99,30 @@ func TestFetchCyclePayloadUsesBYOSHeadersAndResolvesRelativeImageURL(t *testing.
 	}
 	if interval != 15*time.Minute {
 		t.Fatalf("interval = %s, want 15m", interval)
+	}
+}
+
+func TestBatteryVoltageHeader(t *testing.T) {
+	tests := []struct {
+		name   string
+		sample *BatterySample
+		want   string
+	}{
+		{"nil sample", nil, ""},
+		{"empty voltage", &BatterySample{}, ""},
+		{"invalid string", &BatterySample{VoltageMicroV: "abc"}, ""},
+		{"zero voltage", &BatterySample{VoltageMicroV: "0"}, ""},
+		{"negative voltage", &BatterySample{VoltageMicroV: "-1000000"}, ""},
+		{"typical full charge", &BatterySample{VoltageMicroV: "4200000"}, "4.20"},
+		{"typical mid charge", &BatterySample{VoltageMicroV: "3950000"}, "3.95"},
+		{"typical low charge", &BatterySample{VoltageMicroV: "3500000"}, "3.50"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := batteryVoltageHeader(tc.sample); got != tc.want {
+				t.Fatalf("batteryVoltageHeader = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
