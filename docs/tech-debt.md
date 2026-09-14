@@ -69,3 +69,7 @@ Network acquisition, identity, and link/connectivity operations are extracted. C
 ## Phase 6 status
 
 Power and mode policy now live in `internal/power`; existing precedence and scheduling traces still apply. New tests exercise battery absence/optional fields, RTC file writes/fallback, and suspend command fallback without device effects. Physical wake and recovery evidence remains pending. See [validation](phase-6-validation.md).
+
+## Phase 7 status
+
+Appliance install/restore is isolated behind command/file operations and a three-field service snapshot. Legacy full-state persistence remains in the facade. Save-before-start, nonblocking resume, aggregate restore errors, and missing-artifact behavior remain covered. Reinstallation metadata and pending-timer cleanup risks are unchanged; final recovery fixes must have separate notes. See [validation](phase-7-validation.md).
