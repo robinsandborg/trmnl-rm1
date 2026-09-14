@@ -1,0 +1,128 @@
+[
+  {
+    "Name": "landscape",
+    "Input": "landscape.png",
+    "Golden": "landscape-golden.png",
+    "Width": 4,
+    "Height": 2,
+    "Rotation": 3,
+    "SkipRotation": false
+  },
+  {
+    "Name": "portrait",
+    "Input": "portrait.png",
+    "Golden": "portrait-golden.png",
+    "Width": 4,
+    "Height": 2,
+    "Rotation": 3,
+    "SkipRotation": false
+  },
+  {
+    "Name": "crop",
+    "Input": "landscape.png",
+    "Golden": "crop-golden.png",
+    "Width": 2,
+    "Height": 2,
+    "Rotation": 3,
+    "SkipRotation": false
+  },
+  {
+    "Name": "upscale",
+    "Input": "landscape.png",
+    "Golden": "upscale-golden.png",
+    "Width": 6,
+    "Height": 3,
+    "Rotation": 3,
+    "SkipRotation": false
+  },
+  {
+    "Name": "downscale",
+    "Input": "landscape.png",
+    "Golden": "downscale-golden.png",
+    "Width": 2,
+    "Height": 1,
+    "Rotation": 3,
+    "SkipRotation": false
+  },
+  {
+    "Name": "software-rotation-1",
+    "Input": "landscape.png",
+    "Golden": "rotate1-golden.png",
+    "Width": 4,
+    "Height": 2,
+    "Rotation": 1,
+    "SkipRotation": true
+  },
+  {
+    "Name": "software-rotation-2",
+    "Input": "landscape.png",
+    "Golden": "rotate2-golden.png",
+    "Width": 4,
+    "Height": 2,
+    "Rotation": 2,
+    "SkipRotation": true
+  },
+  {
+    "Name": "software-rotation-3",
+    "Input": "landscape.png",
+    "Golden": "rotate3-golden.png",
+    "Width": 4,
+    "Height": 2,
+    "Rotation": 3,
+    "SkipRotation": true
+  },
+  {
+    "Name": "software-rotation-4",
+    "Input": "landscape.png",
+    "Golden": "rotate4-golden.png",
+    "Width": 4,
+    "Height": 2,
+    "Rotation": 4,
+    "SkipRotation": true
+  },
+  {
+    "Name": "portrait-and-software-rotation",
+    "Input": "portrait.png",
+    "Golden": "portrait-rotate-golden.png",
+    "Width": 4,
+    "Height": 2,
+    "Rotation": 3,
+    "SkipRotation": true
+  },
+  {
+    "Name": "alpha",
+    "Input": "alpha.png",
+    "Golden": "alpha-golden.png",
+    "Width": 4,
+    "Height": 2,
+    "Rotation": 3,
+    "SkipRotation": false
+  },
+  {
+    "Name": "jpeg",
+    "Input": "landscape.jpg",
+    "Golden": "jpeg-golden.png",
+    "Width": 4,
+    "Height": 2,
+    "Rotation": 3,
+    "SkipRotation": false
+  },
+  {
+    "Name": "gif",
+    "Input": "landscape.gif",
+    "Golden": "gif-golden.png",
+    "Width": 4,
+    "Height": 2,
+    "Rotation": 3,
+    "SkipRotation": false
+  },
+  {
+    "Name": "bmp",
+    "Input": "landscape.bmp",
+    "Golden": "bmp-golden.png",
+    "Width": 4,
+    "Height": 2,
+    "Rotation": 3,
+    "SkipRotation": false
+  }
+]
