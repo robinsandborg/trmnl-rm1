@@ -1,10 +1,24 @@
 # Architecture map
 
-Updated for Phase 5 on 2026-09-14, based on merged Phase 3 commit `af5c8ec` in an isolated worktree. Phase 0 also inspected uncommitted Wi-Fi SDIO and stock-noise masking work in the shared checkout; that work is excluded from this phase and is not part of this map. Proposed extractions live in [the phase plan](refactoring-plan.md); remaining risks live in [technical debt](tech-debt.md).
+Updated for completed extraction on 2026-09-14. The shared checkout's uncommitted Wi-Fi SDIO and stock-noise work is excluded. Delivery and device verification are tracked in [the phase plan](refactoring-plan.md); remaining risks live in [technical debt](tech-debt.md).
 
 ## Shape and entrypoints
 
-One Go module, `github.com/robinsandborg/rm1-trmnl`, declares Go 1.26 and depends on `golang.org/x/image v0.39.0` for BMP decoding. There are eight Go packages: executable `cmd/trmnl-rm1`, CLI/cycle composition in `internal/trmnl`, protocol module `internal/byos`, image preparation/rendering in `internal/display`, paths/file I/O in `internal/storage`, wireless connectivity/identity in `internal/network`, runtime mode/battery/scheduling/suspend in `internal/power`, and installation/restoration in `internal/appliance`. Dependencies flow from the executable to `trmnl`, then to `byos`, `display`, `storage`, `network`, `power`, and `appliance`. No extracted package imports `trmnl`; BYOS uses only the standard library, while display also uses the BMP decoder. There is no Makefile. [GitHub Actions checks](../.github/workflows/checks.yml) run macOS/Linux tests and vet plus ARMv7 executable/test compilation.
+One Go module, `github.com/robinsandborg/rm1-trmnl`, declares Go 1.26 and depends on `golang.org/x/image v0.39.0` for BMP decoding. Nine packages form the implementation:
+
+| Package | Responsibility |
+| --- | --- |
+| `cmd/trmnl-rm1` | Process entrypoint. |
+| `internal/trmnl` | CLI compatibility, persisted DTOs/defaults, and composition adapters. |
+| `internal/cycle` | One-shot state transitions, refresh cadence, effects ordering, and failure finalization. |
+| `internal/byos` | HTTP display/image exchange and refresh interval policy. |
+| `internal/display` | Portable image preparation and platform renderer commands. |
+| `internal/storage` | Paths, JSON file I/O, raw cache writes, and JSONL append. |
+| `internal/network` | Wi-Fi identity, link commands, connectivity, and acquisition/cleanup. |
+| `internal/power` | Runtime mode, battery, RTC/awake scheduling, and suspend. |
+| `internal/appliance` | Install/restore sequencing, stock-service snapshot, and artifact templates. |
+
+Dependencies flow from the executable through `trmnl` to the internal modules. `cycle` uses display and power value types and receives composed operations; no extracted module imports `trmnl`. There is no Makefile. [CI](../.github/workflows/checks.yml) runs macOS/Linux tests and vet plus ARMv7 executable/test compilation.
 
 | Entrypoint | Implementation and effects |
 | --- | --- |
@@ -42,26 +56,26 @@ flowchart TD
     Failure --> Recovery[Record failure and attempt fallback scheduling]
 ```
 
-`runOnce` loads and validates config, then loads state. It samples battery best-effort. Linux runtime mode precedence is sentinel maintenance, active USB network, boot grace, failure recovery, then appliance. USB activity uses `operstate=up` or `carrier=1`; merely having a MAC is insufficient.
+`runOnce` loads and validates config, then loads state. `cycle.Run` samples battery best-effort. Linux runtime mode precedence is sentinel maintenance, active USB network, boot grace, failure recovery, then appliance. USB activity uses `operstate=up` or `carrier=1`; merely having a MAC is insufficient.
 
 [`internal/byos.Fetch`](../internal/byos/fetch.go) owns the display exchange. The [`trmnl` facade](../internal/trmnl/byos.go) resolves device identity, supplies effective refresh durations and the existing HTTP client, and maps results to the unchanged `TerminalResponse` return shape. The display request sends `ID`, optional `access-token`, and `User-Agent: trmnl-rm1/0.1.0`. `TerminalResponse` reads `image_url`, `filename`, and `refresh_rate` (seconds). Relative image URLs resolve against `base_url`. The separate image GET does not explicitly attach the display headers. A configured HTTP client timeout applies to requests.
 
 Raw downloaded bytes determine the SHA-256 hash. Even unchanged payloads are downloaded and written to the cache; rendering and the rendered-update counter are skipped. A changed image gets a full refresh when `(renderedUpdates + 1) % fullRefreshEvery == 0`; the first default render is partial. Refresh seconds use fallback and min/max clamping.
 
-Success schedules first, appends JSONL, writes state, tears down networking, then optionally suspends. Scheduling may return `awake-fallback` if RTC setup fails but the transient timer succeeds. State's successful `LastMode` is assigned before this fallback, while the success log uses the effective mode. Selected Wi-Fi/HTTP/render/schedule/suspend failures go through `finishCycle`; initial loading, validation, some file errors, and mode detection can return directly. Failure finalization records counters, attempts fallback scheduling, and returns the original error; it does not suspend the device itself.
+Success schedules first, appends JSONL, writes state, tears down networking, then optionally suspends. Scheduling may return `awake-fallback` if RTC setup fails but the transient timer succeeds. State's successful `LastMode` is assigned before this fallback, while the success log uses the effective mode. Selected Wi-Fi/HTTP/render/schedule/suspend failures go through `cycle.finish`; initial loading, validation, some file errors, and mode detection can return directly. Failure finalization records counters, attempts fallback scheduling, and returns the original error; it does not suspend the device itself.
 
 ## Critical domains and current seams
 
 | Domain | Files | Existing seam / platform dependency |
 | --- | --- | --- |
-| CLI and cycle orchestration | [`app.go`](../internal/trmnl/app.go) | `NewApp`/`Run`; injected clock and output writers, with private per-App [`cycleDeps`](../internal/trmnl/cycle_deps.go) for device effects and writes. State transitions, logging, and orchestration share this file; BYOS protocol logic is delegated through the facade. |
+| CLI and cycle orchestration | [`app.go`](../internal/trmnl/app.go) | `NewApp`/`Run`; injected clock and output writers, with private per-App [`cycleDeps`](../internal/trmnl/cycle_deps.go) for device effects and writes. After loading/validating config and state, delegates to [`cycle.Run`](../internal/cycle/cycle.go). [`cycle.go`](../internal/trmnl/cycle.go) composes effective options and operations, converting results back to the unchanged persisted DTOs. |
 | BYOS and refresh policy | [`byos/fetch.go`](../internal/byos/fetch.go), [`byos/refresh.go`](../internal/byos/refresh.go), [`trmnl/byos.go`](../internal/trmnl/byos.go) | `Fetch` accepts the caller's `*http.Client` and BYOS request values. `RefreshPolicy.Interval` clamps effective durations. The facade retains device identity/config defaults and the old return shape; full-refresh cadence stays in cycle orchestration. |
 | Configuration and persistence | [`config.go`](../internal/trmnl/config.go), [`paths.go`](../internal/trmnl/paths.go), [`types.go`](../internal/trmnl/types.go) | `internal/storage` owns path layout, directory creation, JSON reads/writes, cache writes and JSONL append. The facade retains JSON types, load defaults, and validation; existing types are passed directly to the encoder/decoder to preserve error type names. Runtime and installation metadata share `State`. |
 | Display | [`display/prepare.go`](../internal/display/prepare.go), [`display/render_linux.go`](../internal/display/render_linux.go), [`display/png.go`](../internal/display/png.go), [`trmnl/render.go`](../internal/trmnl/render.go) | Portable `Prepare` decodes PNG/JPEG/GIF/BMP, rotates portrait input, center-crops/scales to grayscale, then applies optional software rotation. Linux `Render` writes PNG before custom or FBInk/fbdepth commands through a supplied runner. The facade supplies effective config values and the existing command runner; refresh cadence stays in the cycle. |
 | Network and identity | [`network/network_linux.go`](../internal/network/network_linux.go), [`network/deviceid_linux.go`](../internal/network/deviceid_linux.go), [`trmnl/network.go`](../internal/trmnl/network.go) | Command overrides and ordered link-command fallbacks; wireless identity from sysfs. `prepareNetworkWithDeps` exposes acquisition/cleanup without controlling the test host network. Connectivity HEAD accepts status 200–499 and retries every two seconds. |
 | Runtime mode | [`power/runtime_linux.go`](../internal/power/runtime_linux.go) | `runtimeModeDeps` injects sentinel stat, USB observation, and uptime; USB helper accepts a sysfs root. |
 | Wake and power | [`power/power_linux.go`](../internal/power/power_linux.go) | RTC sysfs/rtcwake, alternating systemd timers, cgroup self-unit lookup, battery sysfs, suspend command override. `planNextCycleWithDeps` exposes RTC/timer effects; the timer helper accepts a command runner. |
-| Appliance lifecycle | [`install_linux.go`](../internal/trmnl/install_linux.go), [`install_common.go`](../internal/trmnl/install_common.go) | `applianceOps` and runner functions cover restore and stop/disable/mask sequences; `runInstallWithDeps` supplies real file/systemd effects in production and records installation ordering in tests. |
+| Appliance lifecycle | [`appliance/install.go`](../internal/appliance/install.go), [`appliance/restore.go`](../internal/appliance/restore.go), [`trmnl/install_linux.go`](../internal/trmnl/install_linux.go) | `applianceOps` and runner functions cover restore and stop/disable/mask sequences; `runInstallWithDeps` supplies real file/systemd effects in production and records installation ordering in tests. |
 | Process execution | [`system.go`](../internal/trmnl/system.go) | Concrete `os/exec` wrappers, stderr capture, ordered command fallback. |
 
 Linux implementations have `//go:build linux`; paired `*_stub.go` files build elsewhere. Non-Linux networking, rendering, install/restore, and power actions return unsupported errors. The non-Linux runtime-mode stub only checks the failure threshold. Pure image preparation is portable, while non-Linux `display.Render` returns the same unsupported error before writing or invoking commands. Host compilation is therefore not equivalent to testing the appliance runtime.
@@ -130,3 +144,5 @@ Phase 5: `network.Prepare` owns acquisition/cleanup, using supplied operations; 
 Phase 6: the power facade maps effective options and legacy battery/mode types. Linux runtime observations and scheduling expose the existing test dependencies. See [validation](phase-6-validation.md).
 
 Phase 7: [`appliance/install.go`](../internal/appliance/install.go) owns installation sequencing and templates; [`appliance/restore.go`](../internal/appliance/restore.go) owns restoration. The facade loads/validates config and maps the three stock-service snapshot fields into the retained state DTO. See [validation](phase-7-validation.md).
+
+Phase 9: [cycle extraction evidence](phase-9-validation.md). All earlier golden fixtures and effect traces pass through the final composition. Hardware verification is still outstanding.

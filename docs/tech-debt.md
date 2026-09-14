@@ -1,10 +1,10 @@
 # Technical debt
 
-Inventory updated for Phase 4, 2026-09-14. The [architecture map](architecture.md) now describes merged Phase 2 baseline `54f2fdd` plus the display extraction. Phase 0 observations about uncommitted Wi-Fi SDIO and stock-noise work are called out below; they are excluded from this PR. Priorities below are local sequencing judgments, not GitHub triage labels. Risks inferred from code are not claimed as reproduced device failures. Phase 1 adds characterization and documentation corrections; Phases 2 and 3 extract BYOS and display while preserving the runtime risks below.
+Inventory updated after extraction, 2026-09-14. The [architecture map](architecture.md) describes the extracted modules and legacy compatibility facade. Phase 0 observations about uncommitted Wi-Fi SDIO and stock-noise work are called out below; they are excluded from this PR. Priorities below are local sequencing judgments, not GitHub triage labels. Risks inferred from code are not claimed as reproduced device failures. Phase 1 adds characterization and documentation corrections; Phases 2 and 3 extract BYOS and display while preserving the runtime risks below.
 
 ## TD-01 — Cycle behavior lacks characterization
 
-**Phase 1 baseline established; extend per extraction.** [`app.go`](../internal/trmnl/app.go) combines command dispatch, network setup, render policy, persistence, scheduling, cleanup, and failure handling. Phase 2 moves both HTTP requests, URL resolution, and interval clamping to [`internal/byos`](../internal/byos/fetch.go) behind the existing facade. `App` now owns private effect dependencies. Cycle tests exercise `App.Run` with real configuration, state/cache/log I/O and BYOS decoding, checking ordered effects and failure outcomes; [fixtures and coverage](phase-1-validation.md) define the extraction baseline.
+**Phase 1 baseline established; extend per extraction.** [`cycle/cycle.go`](../internal/cycle/cycle.go) now owns state transitions, render policy, effect ordering, and failure finalization; [`trmnl/app.go`](../internal/trmnl/app.go) retains CLI dispatch and initial DTO loading/validation. Phase 2 moves both HTTP requests, URL resolution, and interval clamping to [`internal/byos`](../internal/byos/fetch.go) behind the existing facade. `App` now owns private effect dependencies. Cycle tests exercise `App.Run` with real configuration, state/cache/log I/O and BYOS decoding, checking ordered effects and failure outcomes; [fixtures and coverage](phase-1-validation.md) define the extraction baseline.
 
 The difficult contract is effect ordering: state/log writes before suspend, cleanup on failures, counters after a successful render followed by scheduling failure, and fallback errors. The uncommitted SDIO work observed in Phase 0 additionally needs enumeration-before-validation characterization when it is integrated. A refactor could silently change recoverability. Use the captured outputs and effect traces when migrating callers one seam at a time. Preserve current quirks unless separately approved with a migration note.
 
@@ -24,7 +24,7 @@ First preserve the existing file contract behind a storage seam. Atomic writes, 
 
 ## TD-04 — Recovery scheduling and diagnostics are inconsistent
 
-**High; characterized in Phase 1, behavior unchanged.** In [`app.go`](../internal/trmnl/app.go), some file/config/mode failures bypass `finishCycle`. `finishCycle` ignores mode/scheduling errors after persistence. An RTC alarm can be armed during failure finalization even though that path never suspends. Failure recovery therefore does not uniformly guarantee an awake retry. Network cleanup errors and battery read errors are also discarded.
+**High; characterized in Phase 1, behavior unchanged.** Initial loading in [`trmnl/app.go`](../internal/trmnl/app.go) and some file/mode failures in [`cycle/cycle.go`](../internal/cycle/cycle.go) bypass failure finalization. `finishCycle` ignores mode/scheduling errors after persistence. An RTC alarm can be armed during failure finalization even though that path never suspends. Failure recovery therefore does not uniformly guarantee an awake retry. Network cleanup errors and battery read errors are also discarded.
 
 Success records `LastMode` before RTC fallback changes the effective mode. A suspend failure can append a second log after a success log/state write. Scheduling failure occurs after success counters have been reset. The cycle tests now preserve these observable results; changing error categories, counter semantics, retry behavior, or log shape requires a focused behavior change and migration note.
 
@@ -73,3 +73,7 @@ Power and mode policy now live in `internal/power`; existing precedence and sche
 ## Phase 7 status
 
 Appliance install/restore is isolated behind command/file operations and a three-field service snapshot. Legacy full-state persistence remains in the facade. Save-before-start, nonblocking resume, aggregate restore errors, and missing-artifact behavior remain covered. Reinstallation metadata and pending-timer cleanup risks are unchanged; final recovery fixes must have separate notes. See [validation](phase-7-validation.md).
+
+## Phase 9 status
+
+Cycle orchestration is extracted and composed through the original compatibility facade. Existing exact state/log/image fixtures and event traces pass through the final composition. Obsolete command-fallback code and filename constants were removed. Optional Phase 8 behavior work is reserved for concrete recovery/device findings; the durability and early-retry debt above is not silently changed by extraction. See [validation](phase-9-validation.md).

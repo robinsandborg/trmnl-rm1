@@ -1,6 +1,6 @@
 # Incremental refactoring plan
 
-**Status: Phases 1–3 merged; all remaining extraction phases authorized on 2026-09-14.** The user requested that each phase be implemented, checked, reviewed, and merged without further phase approval prompts, followed by comprehensive RM1 tests and fixes. After the foundation is verified and pushed, delegate each open repository issue into its own PR and review every PR. Optional Phase 8 fixes will be selected from concrete test/recovery findings, with migration and rollback notes, rather than changing unrelated behavior during extraction.
+**Status: Phases 1–7 merged; Phase 9 extraction implemented. All remaining work authorized on 2026-09-14.** The user requested that each phase be implemented, checked, reviewed, and merged without further phase approval prompts, followed by comprehensive RM1 tests and fixes. After the foundation is verified and pushed, delegate each open repository issue into its own PR and review every PR. Optional Phase 8 fixes will be selected from concrete test/recovery findings, with migration and rollback notes, rather than changing unrelated behavior during extraction.
 
 Phase 1 is isolated from the shared checkout's uncommitted Wi-Fi SDIO/stock-noise changes and starts at committed `2a86333`. Their integration must retain and extend the baseline (including interface enumeration before MAC fallback); those unrelated changes are not imported here.
 
@@ -54,4 +54,4 @@ Done means tests pass, behavior is matched or explicitly migrated, documentation
 
 ## Remaining delivery
 
-Proceed through Phases 4–7 and 9 with separate reviewed, green PRs. Address concrete recovery findings separately under Phase 8. Then verify the complete software on RM1, resolve findings, and push/merge the final changes before delegating repository issues. Automated checks remain required for every phase.
+Finish merging Phase 9 after review and green CI. Phase 8 was skipped during extraction; address concrete recovery findings separately with migration notes. Then verify the complete software on RM1, resolve findings, and push/merge the final changes before delegating repository issues. Automated checks remain required for every phase.
