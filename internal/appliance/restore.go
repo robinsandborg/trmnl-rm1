@@ -14,9 +14,10 @@ const (
 )
 
 type RestoreOps struct {
-	Run          func([]string) error
-	Remove       func(string) error
-	SleepHookDir func() (string, error)
+	RestoreNetwork func() error
+	Run            func([]string) error
+	Remove         func(string) error
+	SleepHookDir   func() (string, error)
 }
 
 func Disable(run func([]string) error, unit string) error {
@@ -60,11 +61,23 @@ func Restore(state Snapshot, ops RestoreOps) error {
 		errs = append(errs, fmt.Errorf("reload systemd units: %w", err))
 	}
 
+	if ops.RestoreNetwork != nil {
+		if err := ops.RestoreNetwork(); err != nil {
+			errs = append(errs, fmt.Errorf("restore wireless networking: %w", err))
+		}
+	}
+
 	// restore-stock is defined as returning the tablet to stock UI behavior, so
 	// xochitl must be enabled even if the saved install-time state is incomplete.
 	errs = append(errs, restoreUnitWithRunner(ops.Run, "xochitl.service", true)...)
 	if state.StockSyncUnit != "" {
 		errs = append(errs, restoreUnitWithRunner(ops.Run, state.StockSyncUnit, state.SyncWasEnabled)...)
+	}
+
+	for _, unit := range stockNoiseUnits {
+		if enabled, ok := state.MaskedNoise[unit]; ok {
+			errs = append(errs, restoreUnitWithRunner(ops.Run, unit, enabled)...)
+		}
 	}
 
 	return joinErrors(errs...)
@@ -105,3 +118,6 @@ func joinErrors(errs ...error) error {
 	}
 	return errors.Join(nonNil...)
 }
+
+// Only restore the known stock units touched by the deployed appliance.
+var stockNoiseUnits = []string{"chronyd.service", "crashuploader.service", "memfaultd.service", "memfault-attributes.service", "swupdate.service", "swupdate.socket", "update-engine.service", "getty@tty1.service", "serial-getty@ttymxc0.service"}

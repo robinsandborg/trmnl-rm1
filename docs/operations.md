@@ -128,6 +128,8 @@ For a **full flash refresh** of the prepared PNG even when its hash is unchanged
 ssh root@10.11.99.1 'FBINK_NO_SW_ROTA=1 /home/root/bin/fbink -g file=/home/root/.local/state/trmnl-rm1/current.png --waveform GC16 --noviewport --flash'
 ```
 
+After a cold boot, first restore the configured framebuffer depth (for this RM1, `/home/root/bin/fbdepth -d 8`); firmware starts in 16-bit landscape mode and FBInk can reject a refresh there. Apply configured hardware rotation too if enabled. The client normally performs this preparation when it renders.
+
 This redraws the prepared file; it does not fetch a new image or advance the client's refresh counter. Check the cycle log first: the prepared file is written before rendering and may belong to a failed render. Preserve `state.json`; deleting it discards restore metadata and the first default client render is partial, not full.
 
 ## Test FBInk directly
@@ -273,3 +275,11 @@ This is the rollback procedure for a change that preserves the configuration and
 ## Deployment helper limitations
 
 `deploy/deploy.sh` checks FBInk and fbdepth under `/home/root/bin`; its missing-tool message names `/usr/local/bin`, which does not satisfy that check. Use `/home/root/bin` and configure the binary paths explicitly when necessary. The helper overwrites binary/config without retaining a backup and clears the maintenance sentinel after `appliance` installation. Use the manual rollout above when preserving an existing maintenance session or rollback artifacts. These helper behaviors are unchanged by Phase 1.
+
+## SDIO recovery and deployed restore metadata
+
+After upgrading the boot wiring fix, run `install-appliance` once: the unit now requires `/home/root` to be mounted before executing the client. This RM1 mounts `/home` with `nofail`; ordering only after `network.target` allowed a reproducible `203/EXEC` at boot. Reinstallation preserves the recorded stock-service metadata.
+
+The RM1 radio is unbound between appliance cycles to preserve the deployed power behavior. Cycle/install entrypoints enumerate it before validation; `validate` and `print-device-id` also enumerate when they need automatic identity. This can take up to five seconds. Custom Wi-Fi commands retain control of their own radio lifecycle.
+
+Keep `masked_noise` in state: it records original enablement of stock services touched by the deployed appliance. Install preserves recorded values on reinstall; restore unmasks the known entries and re-enables those originally enabled, and recovers Wi-Fi before starting the stock UI. Continue to quiesce A/B timers explicitly before restore. See [device validation](device-validation.md) for tested behavior, compatibility notes, and the retained on-device rollback backup.

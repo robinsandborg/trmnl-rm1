@@ -9,10 +9,13 @@ import (
 )
 
 type Snapshot struct {
+	MaskedNoise                       map[string]bool
 	StockSyncUnit                     string
 	SyncWasEnabled, XochitlWasEnabled bool
 }
 type InstallDeps struct {
+	UnitExists    func(string) bool
+	Warn          func(error)
 	WriteFile     func(string, []byte, os.FileMode) error
 	Executable    func() (string, error)
 	SleepHookDir  func() (string, error)
@@ -44,9 +47,11 @@ func Install(state Snapshot, deps InstallDeps) error {
 	if err != nil {
 		return err
 	}
-	state.StockSyncUnit = syncUnit
-	state.SyncWasEnabled = syncEnabled
-	state.XochitlWasEnabled = deps.UnitEnabled("xochitl.service")
+	if state.StockSyncUnit == "" && state.MaskedNoise == nil && !state.XochitlWasEnabled {
+		state.StockSyncUnit = syncUnit
+		state.SyncWasEnabled = syncEnabled
+		state.XochitlWasEnabled = deps.UnitEnabled("xochitl.service")
+	}
 
 	if err := deps.Run([]string{"systemctl", "daemon-reload"}); err != nil {
 		return err
@@ -57,6 +62,26 @@ func Install(state Snapshot, deps InstallDeps) error {
 	if syncUnit != "" {
 		if err := Disable(deps.Run, syncUnit); err != nil {
 			return err
+		}
+	}
+	if deps.UnitExists != nil {
+		saved := make(map[string]bool, len(state.MaskedNoise))
+		for unit, enabled := range state.MaskedNoise {
+			saved[unit] = enabled
+		}
+		for _, unit := range stockNoiseUnits {
+			if !deps.UnitExists(unit) {
+				continue
+			}
+			if _, ok := saved[unit]; !ok {
+				saved[unit] = deps.UnitEnabled(unit)
+			}
+			if err := Disable(deps.Run, unit); err != nil && deps.Warn != nil {
+				deps.Warn(err)
+			}
+		}
+		if len(saved) > 0 {
+			state.MaskedNoise = saved
 		}
 	}
 	if err := deps.Run([]string{"systemctl", "enable", ServiceName}); err != nil {
@@ -87,6 +112,7 @@ func RenderService(exePath string) string {
 Description=TRMNL RM1 appliance cycle
 After=network.target
 Wants=network.target
+RequiresMountsFor=/home/root
 
 [Service]
 Type=oneshot

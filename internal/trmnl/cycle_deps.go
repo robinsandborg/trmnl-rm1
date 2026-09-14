@@ -2,6 +2,7 @@ package trmnl
 
 import (
 	"context"
+	"github.com/robinsandborg/rm1-trmnl/internal/network"
 	"github.com/robinsandborg/rm1-trmnl/internal/storage"
 	"net/http"
 	"os"
@@ -12,6 +13,7 @@ import (
 // tests. Configuration, HTTP decoding, hashing, and state transitions still
 // run through the production path. Each App owns its dependencies.
 type cycleDeps struct {
+	ensureInterface      func(Config)
 	readBatterySample    func(Config) (*BatterySample, error)
 	determineRuntimeMode func(Paths, Config, State, time.Time) (RuntimeMode, error)
 	prepareNetwork       func(Config) (*http.Client, func(), error)
@@ -25,6 +27,7 @@ type cycleDeps struct {
 
 func defaultCycleDeps(prepare func(Config) (*http.Client, func(), error)) cycleDeps {
 	return cycleDeps{
+		ensureInterface:      func(cfg Config) { network.EnsureInterface(networkOptions(cfg)) },
 		readBatterySample:    readBatterySample,
 		determineRuntimeMode: determineRuntimeMode,
 		prepareNetwork:       prepare,
