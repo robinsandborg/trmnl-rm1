@@ -1,10 +1,10 @@
 # Architecture map
 
-Updated for Phase 1 on 2026-09-14, based on committed baseline `2a86333` in an isolated worktree. Phase 0 also inspected uncommitted Wi-Fi SDIO and stock-noise masking work in the shared checkout; that work is excluded from this phase and is not part of this map. Proposed extractions live in [the phase plan](refactoring-plan.md); remaining risks live in [technical debt](tech-debt.md).
+Updated for Phase 2 on 2026-09-14, based on merged Phase 1 commit `dba4fb7` in an isolated worktree. Phase 0 also inspected uncommitted Wi-Fi SDIO and stock-noise masking work in the shared checkout; that work is excluded from this phase and is not part of this map. Proposed extractions live in [the phase plan](refactoring-plan.md); remaining risks live in [technical debt](tech-debt.md).
 
 ## Shape and entrypoints
 
-One Go module, `github.com/robinsandborg/rm1-trmnl`, declares Go 1.26 and depends on `golang.org/x/image v0.39.0` for BMP decoding. There are two Go packages: executable `cmd/trmnl-rm1` and implementation `internal/trmnl`. There is no Makefile. [GitHub Actions checks](../.github/workflows/checks.yml) run macOS/Linux tests and vet plus ARMv7 executable/test compilation.
+One Go module, `github.com/robinsandborg/rm1-trmnl`, declares Go 1.26 and depends on `golang.org/x/image v0.39.0` for BMP decoding. There are three Go packages: executable `cmd/trmnl-rm1`, CLI/cycle composition in `internal/trmnl`, and the extracted protocol module `internal/byos`. Dependencies flow `cmd/trmnl-rm1 → internal/trmnl → internal/byos`; BYOS imports only the standard library. There is no Makefile. [GitHub Actions checks](../.github/workflows/checks.yml) run macOS/Linux tests and vet plus ARMv7 executable/test compilation.
 
 | Entrypoint | Implementation and effects |
 | --- | --- |
@@ -44,7 +44,7 @@ flowchart TD
 
 `runOnce` loads and validates config, then loads state. It samples battery best-effort. Linux runtime mode precedence is sentinel maintenance, active USB network, boot grace, failure recovery, then appliance. USB activity uses `operstate=up` or `carrier=1`; merely having a MAC is insufficient.
 
-The display request sends `ID`, optional `access-token`, and `User-Agent: trmnl-rm1/0.1.0`. `TerminalResponse` reads `image_url`, `filename`, and `refresh_rate` (seconds). Relative image URLs resolve against `base_url`. The separate image GET does not explicitly attach the display headers. A configured HTTP client timeout applies to requests.
+[`internal/byos.Fetch`](../internal/byos/fetch.go) owns the display exchange. The [`trmnl` facade](../internal/trmnl/byos.go) resolves device identity, supplies effective refresh durations and the existing HTTP client, and maps results to the unchanged `TerminalResponse` return shape. The display request sends `ID`, optional `access-token`, and `User-Agent: trmnl-rm1/0.1.0`. `TerminalResponse` reads `image_url`, `filename`, and `refresh_rate` (seconds). Relative image URLs resolve against `base_url`. The separate image GET does not explicitly attach the display headers. A configured HTTP client timeout applies to requests.
 
 Raw downloaded bytes determine the SHA-256 hash. Even unchanged payloads are downloaded and written to the cache; rendering and the rendered-update counter are skipped. A changed image gets a full refresh when `(renderedUpdates + 1) % fullRefreshEvery == 0`; the first default render is partial. Refresh seconds use fallback and min/max clamping.
 
@@ -54,8 +54,8 @@ Success schedules first, appends JSONL, writes state, tears down networking, the
 
 | Domain | Files | Existing seam / platform dependency |
 | --- | --- | --- |
-| CLI and cycle orchestration | [`app.go`](../internal/trmnl/app.go) | `NewApp`/`Run`; injected clock and output writers, with private per-App [`cycleDeps`](../internal/trmnl/cycle_deps.go) for device effects and writes. Fetch, state transitions, logging, and orchestration share this file. |
-| BYOS and refresh policy | `app.go` | `fetchCyclePayload` accepts `*http.Client`; tests substitute `RoundTripper`. Refresh clamp and full-refresh selection are pure helpers. |
+| CLI and cycle orchestration | [`app.go`](../internal/trmnl/app.go) | `NewApp`/`Run`; injected clock and output writers, with private per-App [`cycleDeps`](../internal/trmnl/cycle_deps.go) for device effects and writes. State transitions, logging, and orchestration share this file; BYOS protocol logic is delegated through the facade. |
+| BYOS and refresh policy | [`byos/fetch.go`](../internal/byos/fetch.go), [`byos/refresh.go`](../internal/byos/refresh.go), [`trmnl/byos.go`](../internal/trmnl/byos.go) | `Fetch` accepts the caller's `*http.Client` and BYOS request values. `RefreshPolicy.Interval` clamps effective durations. The facade retains device identity/config defaults and the old return shape; full-refresh cadence stays in cycle orchestration. |
 | Configuration and persistence | [`config.go`](../internal/trmnl/config.go), [`paths.go`](../internal/trmnl/paths.go), [`types.go`](../internal/trmnl/types.go) | Concrete file paths; shared JSON types and effective-default methods. Runtime and installation metadata share `State`. |
 | Display | [`render_linux.go`](../internal/trmnl/render_linux.go), [`render_common.go`](../internal/trmnl/render_common.go) | Decode PNG/JPEG/GIF/BMP, rotate portrait input, center-crop/scale to grayscale, optional software rotation, write PNG; custom renderer command or FBInk/fbdepth. |
 | Network and identity | [`network_linux.go`](../internal/trmnl/network_linux.go), [`deviceid_linux.go`](../internal/trmnl/deviceid_linux.go) | Command overrides and ordered link-command fallbacks; wireless identity from sysfs. `prepareNetworkWithDeps` exposes acquisition/cleanup without controlling the test host network. Connectivity HEAD accepts status 200–499 and retries every two seconds. |
@@ -68,7 +68,7 @@ Linux implementations have `//go:build linux`; paired `*_stub.go` files build el
 
 ## Stored and external contracts
 
-[`types.go`](../internal/trmnl/types.go) is the source of JSON field names. [`paths.go`](../internal/trmnl/paths.go) resolves XDG overrides with home-directory defaults:
+[`types.go`](../internal/trmnl/types.go) remains the source of persisted configuration/state/log field names and the legacy `TerminalResponse` type. BYOS decodes into a matching `byos.TerminalResponse`, retaining the type name because JSON type-error messages include it; the facade explicitly maps its fields back to the legacy type. [`paths.go`](../internal/trmnl/paths.go) resolves XDG overrides with home-directory defaults:
 
 | Artifact | Default path / representation |
 | --- | --- |
@@ -93,14 +93,17 @@ go test -count=1 -race -cover ./...
 go vet ./...
 GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 \
   go build -trimpath -ldflags='-s -w' -o /tmp/trmnl-rm1-arm ./cmd/trmnl-rm1
+mkdir -p /tmp/trmnl-arm-tests
 GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 \
-  go test -c -o /tmp/trmnl-rm1-arm.test ./internal/trmnl
+  go test -c -o /tmp/trmnl-arm-tests/ ./...
 ```
 
 Execute `go test -count=1 -race -cover ./...` and `go vet ./...` on a Linux runner to exercise Linux-tagged tests. Cross-compiling the test binary only checks compilation. The deployment script expects its binary at `build/trmnl-rm1`; see [operations](operations.md) for device procedures and [known drift](tech-debt.md#td-06--operations-and-deployment-drift) before using them.
 
 | Current tests | Scope |
 | --- | --- |
+| [`byos/fetch_test.go`](../internal/byos/fetch_test.go), [`byos/refresh_test.go`](../internal/byos/refresh_test.go) | Black-box protocol/interval tests: relative and absolute URLs, original bytes, headers, status/JSON/transport/read errors, body closure, timeout/redirect policy, fallback and bounds. |
+| [`trmnl/byos_test.go`](../internal/trmnl/byos_test.go) | Facade identity/default mapping, raw versus resolved metadata, zero results on failure, exact JSON error text. |
 | [`app_test.go`](../internal/trmnl/app_test.go) | Refresh bounds, full-refresh cadence, BYOS headers and relative image URL. |
 | [`cycle_test.go`](../internal/trmnl/cycle_test.go) | `App.Run` with fixture transport, temporary files and device-effect recorders: changed/unchanged/full-refresh behavior, mode outcomes, failures and effect ordering. Real JSONL/state fixtures live in [`testdata/cycle`](../internal/trmnl/testdata/cycle). |
 | [`contracts_test.go`](../internal/trmnl/contracts_test.go) | Config defaults/precedence/validation, CLI outputs, XDG paths, state round trip, JSONL append, file permissions, device-ID platform differences. |
@@ -113,3 +116,5 @@ Execute `go test -count=1 -race -cover ./...` and `go vet ./...` on a Linux runn
 The dependency seams preserve the production implementations and introduce no new exported API or data format. Tests do not execute real systemd, suspend, rfkill, or device sysfs writes. Prepared-image tests verify the cycle's handoff bytes; display pixel equivalence and hardware timing remain work for later phases.
 
 Phase 1 verification uses Go 1.26.2 on darwin/arm64 and Linux/arm64 in the `golang:1.26.2` Docker image. Both suites pass with race detection, and both vet checks pass. Linux ARMv7 executable and test binary compilation passes. CI repeats macOS/Linux checks and ARMv7 compilation. See [Phase 1 evidence](phase-1-validation.md) for results and limits. No device deployment, physical rendering, suspend, or restore was performed.
+
+Phase 2 repeats the host/Linux race tests and vet plus ARMv7 executable and all-package test compilation. The unchanged cycle suite and new facade checks also pass against the pre-extraction implementation using temporary source overlays. See [Phase 2 evidence](phase-2-validation.md). Device verification is deferred until the completed refactor as authorized by the user.
