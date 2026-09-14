@@ -16,7 +16,7 @@ Practical runbook for working with the reMarkable 1 once it's running the `trmnl
 | Cycle log (JSONL) | `/home/root/.local/state/trmnl-rm1/cycles.log` |
 | Last rendered PNG | `/home/root/.local/state/trmnl-rm1/current.png` |
 | Appliance unit | `trmnl-rm1-appliance.service` |
-| Next-cycle transient | `trmnl-rm1-next.timer` / `.service` |
+| Next-cycle transients | `trmnl-rm1-next-a.timer` / `.service` and `trmnl-rm1-next-b.timer` / `.service` |
 | Stock services | `xochitl.service`, `rm-sync.service` |
 
 All `ssh`/`scp` commands below target `root@10.11.99.1`. If the device is off USB, use the WLAN IP shown in Settings → General → Help → Copyrights and licenses. On firmware 3.x the USB network requires the device to be **awake** (screen on) — if `ssh` says "No route to host", tap the screen first.
@@ -34,6 +34,10 @@ RM_PASSWORD='<password-from-device-Settings>' DEVICE=10.11.99.1 \
 The password is on the device: Settings → General → Help → Copyrights and licenses. It is per-device.
 
 ## Push a new build
+
+Before a device rollout, run the host/Linux checks and ARM build in [the architecture map](architecture.md#build-and-test-commands). Keep a copy of the previous binary, configuration, state, and installed unit/hook files. `state.json` includes stock-service restore metadata as well as display history; preserve it.
+
+Use a USB maintenance connection for the swap. Stop the appliance and both next-cycle units, then verify they are inactive (see [Quiesce appliance cycles](#quiesce-appliance-cycles)). Copy the new binary into place only after those checks. The copy commands below do not take backups for you.
 
 After editing code on the Mac:
 
@@ -107,10 +111,10 @@ Maintenance is also triggered automatically whenever `usb0` is up (plugging the 
 ## Check scheduled next cycle
 
 ```bash
-ssh root@10.11.99.1 'systemctl status trmnl-rm1-next.timer --no-pager'
+ssh root@10.11.99.1 'systemctl status trmnl-rm1-next-a.timer trmnl-rm1-next-b.timer --no-pager'
 ```
 
-The `Trigger:` line shows when the next `run-once` fires.
+The active timer's `Trigger:` line shows when the next `run-once` fires. Awake cycles alternate A/B names to avoid stopping their own service. One timer may be inactive or absent; appliance suspend mode uses an RTC wake alarm instead of an awake timer.
 
 ## Force a refresh now (skip the timer)
 
@@ -118,11 +122,13 @@ The `Trigger:` line shows when the next `run-once` fires.
 ssh root@10.11.99.1 'systemctl start trmnl-rm1-appliance.service'
 ```
 
-Or, to force a **full flash refresh** even if the image hash hasn't changed, wipe state and re-run:
+For a **full flash refresh** of the prepared PNG even when its hash is unchanged, use FBInk directly while cycles are quiesced:
 
 ```bash
-ssh root@10.11.99.1 'rm -f /home/root/.local/state/trmnl-rm1/state.json && /home/root/bin/trmnl-rm1 run-once'
+ssh root@10.11.99.1 'FBINK_NO_SW_ROTA=1 /home/root/bin/fbink -g file=/home/root/.local/state/trmnl-rm1/current.png --waveform GC16 --noviewport --flash'
 ```
+
+This redraws the prepared file; it does not fetch a new image or advance the client's refresh counter. Check the cycle log first: the prepared file is written before rendering and may belong to a failed render. Preserve `state.json`; deleting it discards restore metadata and the first default client render is partial, not full.
 
 ## Test FBInk directly
 
@@ -147,12 +153,14 @@ ssh root@10.11.99.1 'tail -n 20 /home/root/.local/state/trmnl-rm1/cycles.log'
 ssh root@10.11.99.1 'journalctl -u trmnl-rm1-appliance.service -n 50 --no-pager'
 
 # Next-cycle transient service journal:
-ssh root@10.11.99.1 'journalctl -u trmnl-rm1-next.service -n 50 --no-pager'
+ssh root@10.11.99.1 'journalctl -u trmnl-rm1-next-a.service -u trmnl-rm1-next-b.service -n 50 --no-pager'
 ```
 
 ## Restore to stock tablet mode
 
-Reverses `install-appliance` — unmasks `xochitl` and `rm-sync`, removes the appliance unit and resume hook, starts `xochitl` again.
+Unmasks and starts xochitl, restores the recorded sync unit according to its saved enabled status, and removes the appliance unit and resume hook. Quiesce the appliance first: current `restore-stock` does not cancel the A/B transient timers. A pending timer can start another cycle after restore.
+
+Use [Quiesce appliance cycles](#quiesce-appliance-cycles), retain state, then run:
 
 ```bash
 ssh root@10.11.99.1 '/home/root/bin/trmnl-rm1 restore-stock'
@@ -183,13 +191,13 @@ If SSH stops responding:
 3. If still unreachable, hold the power button ~10s to force a reboot. After boot, the boot-grace window (default 10 min) prevents auto-suspend — that's the window to SSH in and fix things.
 4. Worst case: reinstall stock firmware via the reMarkable recovery process (reMarkable's own docs).
 
-To disable the appliance service before it suspends the device again:
+To keep the appliance stopped, follow [Quiesce appliance cycles](#quiesce-appliance-cycles) and disable startup:
 
 ```bash
-ssh root@10.11.99.1 'systemctl stop trmnl-rm1-appliance.service trmnl-rm1-next.timer; systemctl disable trmnl-rm1-appliance.service'
+ssh root@10.11.99.1 'systemctl disable trmnl-rm1-appliance.service'
 ```
 
-Or run a single clean restore:
+After quiescing cycles, restore stock mode:
 
 ```bash
 ssh root@10.11.99.1 '/home/root/bin/trmnl-rm1 restore-stock'
@@ -235,6 +243,33 @@ After this, the WLAN IP in Settings also accepts SSH.
   trmnl-rm1-appliance.service    # written by install-appliance
 
 /run/systemd/transient/
-  trmnl-rm1-next.timer           # transient, between cycles
-  trmnl-rm1-next.service
+  trmnl-rm1-next-a.timer         # awake cycles alternate A/B
+  trmnl-rm1-next-a.service
+  trmnl-rm1-next-b.timer
+  trmnl-rm1-next-b.service
 ```
+
+## Quiesce appliance cycles
+
+Connect over USB and keep the device awake. Record whether the maintenance sentinel already exists so you can preserve the operator's choice. Creating it prevents suspend but does not stop scheduling; stop all cycle entrypoints as well:
+
+```bash
+ssh root@10.11.99.1 'touch /home/root/.config/trmnl-rm1/maintenance'
+ssh root@10.11.99.1 'systemctl stop trmnl-rm1-appliance.service trmnl-rm1-next-a.timer trmnl-rm1-next-b.timer trmnl-rm1-next-a.service trmnl-rm1-next-b.service'
+ssh root@10.11.99.1 'systemctl is-active trmnl-rm1-appliance.service trmnl-rm1-next-a.timer trmnl-rm1-next-b.timer trmnl-rm1-next-a.service trmnl-rm1-next-b.service'
+```
+
+An absent transient unit can make the stop command return nonzero; inspect the result rather than assuming all stops failed or succeeded. All five units should report inactive/failed/unknown, never active or activating. A cycle finishing during shutdown can recreate a timer; repeat the stop and verify if necessary. Keep them stopped while backing up or swapping files.
+
+## Roll back a binary update
+
+This is the rollback procedure for a change that preserves the configuration and state formats. A change with a migration must provide its own downgrade instructions. The procedure is documented from the existing service wiring; it still requires verification on the target RM1 before rollout.
+
+1. Quiesce cycles over USB as above. Retain both the current and pre-update copies of the binary, config, state, appliance service, and resume hook. Never delete state to roll back.
+2. Restore the previous binary to `/home/root/bin/trmnl-rm1` using a temporary upload and rename as in the build procedure. For a pure code refactor, leave the current compatible state/config in place so recent cycles and install metadata survive.
+3. If the rollout intentionally changed configuration or installed unit/hook files, restore the corresponding saved versions and run `systemctl daemon-reload`. Restore old state only when an approved migration requires it; a stale state snapshot can discard newer restore metadata.
+4. Run `validate`, then start `trmnl-rm1-appliance.service` in maintenance mode. Inspect the log and display, and verify the next awake timer. Preserve a pre-existing maintenance sentinel; remove one created only for rollout after checks pass.
+
+## Deployment helper limitations
+
+`deploy/deploy.sh` checks FBInk and fbdepth under `/home/root/bin`; its missing-tool message names `/usr/local/bin`, which does not satisfy that check. Use `/home/root/bin` and configure the binary paths explicitly when necessary. The helper overwrites binary/config without retaining a backup and clears the maintenance sentinel after `appliance` installation. Use the manual rollout above when preserving an existing maintenance session or rollback artifacts. These helper behaviors are unchanged by Phase 1.

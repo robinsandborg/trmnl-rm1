@@ -1,0 +1,115 @@
+# Architecture map
+
+Updated for Phase 1 on 2026-09-14, based on committed baseline `2a86333` in an isolated worktree. Phase 0 also inspected uncommitted Wi-Fi SDIO and stock-noise masking work in the shared checkout; that work is excluded from this phase and is not part of this map. Proposed extractions live in [the phase plan](refactoring-plan.md); remaining risks live in [technical debt](tech-debt.md).
+
+## Shape and entrypoints
+
+One Go module, `github.com/robinsandborg/rm1-trmnl`, declares Go 1.26 and depends on `golang.org/x/image v0.39.0` for BMP decoding. There are two Go packages: executable `cmd/trmnl-rm1` and implementation `internal/trmnl`. There is no Makefile. [GitHub Actions checks](../.github/workflows/checks.yml) run macOS/Linux tests and vet plus ARMv7 executable/test compilation.
+
+| Entrypoint | Implementation and effects |
+| --- | --- |
+| CLI process | [`cmd/trmnl-rm1/main.go`](../cmd/trmnl-rm1/main.go) constructs `trmnl.NewApp`, calls `Run`, prints errors to stderr, exits 1 on error. |
+| Command dispatch | [`App.Run`](../internal/trmnl/app.go) resolves XDG paths and creates runtime directories before dispatch, including for invalid commands. |
+| `validate` | Loads defaults and JSON, validates effective configuration and device identity; prints `config is valid`. |
+| `print-device-id` | Prints configured identity or Linux wireless MAC fallback. |
+| `run-once` | One fetch/render/schedule cycle; no resident polling loop. |
+| `install-appliance` | [`install_linux.go`](../internal/trmnl/install_linux.go) writes systemd unit and resume hook, changes stock services, saves restore metadata, starts appliance service. Rejects arguments. |
+| `restore-stock` | Linux entrypoint delegates to [`runRestoreWithOps`](../internal/trmnl/install_common.go); removes appliance artifacts and restores stock services with aggregated errors. |
+| Boot/resume | Generated `trmnl-rm1-appliance.service` runs the executable with `run-once`, root, and `HOME=/home/root`. The sleep hook's `post` case uses `systemctl start --no-block`. |
+| Awake next cycle | [`power_linux.go`](../internal/trmnl/power_linux.go) alternates `trmnl-rm1-next-a` and `trmnl-rm1-next-b` timer/service names, avoiding the current unit. |
+| Deployment | [`deploy/deploy.sh`](../deploy/deploy.sh) copies binary/config over SSH, sets maintenance, validates and runs a cycle; optional `appliance` installs and clears maintenance. [`bootstrap-ssh-key.sh`](../deploy/bootstrap-ssh-key.sh) bootstraps access. |
+
+## Runtime flow
+
+```mermaid
+flowchart TD
+    Entry[CLI / boot service / resume hook / transient timer] --> App[App.Run: paths and command dispatch]
+    App --> Once[runOnce: config, validation, state]
+    Once --> Mode[Battery sample and runtime mode]
+    Mode --> Net[Bring Wi-Fi up and wait for connectivity]
+    Net --> BYOS[GET /api/display then GET image URL]
+    BYOS --> Hash[Hash downloaded bytes and compare saved hash]
+    Hash --> Render[If changed: prepare PNG and render]
+    Render --> Plan[Schedule RTC wake or awake timer]
+    Plan --> Persist[Append cycle log then save state]
+    Persist --> Cleanup[Clean up network]
+    Cleanup --> Sleep[Suspend if effective mode permits]
+    Net --> Failure[Selected failures: finishCycle]
+    BYOS --> Failure
+    Render --> Failure
+    Plan --> Failure
+    Sleep --> Failure
+    Failure --> Recovery[Record failure and attempt fallback scheduling]
+```
+
+`runOnce` loads and validates config, then loads state. It samples battery best-effort. Linux runtime mode precedence is sentinel maintenance, active USB network, boot grace, failure recovery, then appliance. USB activity uses `operstate=up` or `carrier=1`; merely having a MAC is insufficient.
+
+The display request sends `ID`, optional `access-token`, and `User-Agent: trmnl-rm1/0.1.0`. `TerminalResponse` reads `image_url`, `filename`, and `refresh_rate` (seconds). Relative image URLs resolve against `base_url`. The separate image GET does not explicitly attach the display headers. A configured HTTP client timeout applies to requests.
+
+Raw downloaded bytes determine the SHA-256 hash. Even unchanged payloads are downloaded and written to the cache; rendering and the rendered-update counter are skipped. A changed image gets a full refresh when `(renderedUpdates + 1) % fullRefreshEvery == 0`; the first default render is partial. Refresh seconds use fallback and min/max clamping.
+
+Success schedules first, appends JSONL, writes state, tears down networking, then optionally suspends. Scheduling may return `awake-fallback` if RTC setup fails but the transient timer succeeds. State's successful `LastMode` is assigned before this fallback, while the success log uses the effective mode. Selected Wi-Fi/HTTP/render/schedule/suspend failures go through `finishCycle`; initial loading, validation, some file errors, and mode detection can return directly. Failure finalization records counters, attempts fallback scheduling, and returns the original error; it does not suspend the device itself.
+
+## Critical domains and current seams
+
+| Domain | Files | Existing seam / platform dependency |
+| --- | --- | --- |
+| CLI and cycle orchestration | [`app.go`](../internal/trmnl/app.go) | `NewApp`/`Run`; injected clock and output writers, with private per-App [`cycleDeps`](../internal/trmnl/cycle_deps.go) for device effects and writes. Fetch, state transitions, logging, and orchestration share this file. |
+| BYOS and refresh policy | `app.go` | `fetchCyclePayload` accepts `*http.Client`; tests substitute `RoundTripper`. Refresh clamp and full-refresh selection are pure helpers. |
+| Configuration and persistence | [`config.go`](../internal/trmnl/config.go), [`paths.go`](../internal/trmnl/paths.go), [`types.go`](../internal/trmnl/types.go) | Concrete file paths; shared JSON types and effective-default methods. Runtime and installation metadata share `State`. |
+| Display | [`render_linux.go`](../internal/trmnl/render_linux.go), [`render_common.go`](../internal/trmnl/render_common.go) | Decode PNG/JPEG/GIF/BMP, rotate portrait input, center-crop/scale to grayscale, optional software rotation, write PNG; custom renderer command or FBInk/fbdepth. |
+| Network and identity | [`network_linux.go`](../internal/trmnl/network_linux.go), [`deviceid_linux.go`](../internal/trmnl/deviceid_linux.go) | Command overrides and ordered link-command fallbacks; wireless identity from sysfs. `prepareNetworkWithDeps` exposes acquisition/cleanup without controlling the test host network. Connectivity HEAD accepts status 200–499 and retries every two seconds. |
+| Runtime mode | [`runtime_linux.go`](../internal/trmnl/runtime_linux.go) | `runtimeModeDeps` injects sentinel stat, USB observation, and uptime; USB helper accepts a sysfs root. |
+| Wake and power | [`power_linux.go`](../internal/trmnl/power_linux.go) | RTC sysfs/rtcwake, alternating systemd timers, cgroup self-unit lookup, battery sysfs, suspend command override. `planNextCycleWithDeps` exposes RTC/timer effects; the timer helper accepts a command runner. |
+| Appliance lifecycle | [`install_linux.go`](../internal/trmnl/install_linux.go), [`install_common.go`](../internal/trmnl/install_common.go) | `applianceOps` and runner functions cover restore and stop/disable/mask sequences; `runInstallWithDeps` supplies real file/systemd effects in production and records installation ordering in tests. |
+| Process execution | [`system.go`](../internal/trmnl/system.go) | Concrete `os/exec` wrappers, stderr capture, ordered command fallback. |
+
+Linux implementations have `//go:build linux`; paired `*_stub.go` files build elsewhere. Non-Linux networking, rendering, install/restore, and power actions return unsupported errors. The non-Linux runtime-mode stub only checks the failure threshold. Host compilation is therefore not equivalent to testing the appliance runtime.
+
+## Stored and external contracts
+
+[`types.go`](../internal/trmnl/types.go) is the source of JSON field names. [`paths.go`](../internal/trmnl/paths.go) resolves XDG overrides with home-directory defaults:
+
+| Artifact | Default path / representation |
+| --- | --- |
+| Configuration | `~/.config/trmnl-rm1/config.json`; defaults are applied before JSON unmarshal. Effective numeric defaults use positive-value checks. Nested `display_power.full_refresh_every` takes precedence over the top-level field. |
+| Maintenance | `~/.config/trmnl-rm1/maintenance`; file presence selects maintenance mode. |
+| State | `~/.local/state/trmnl-rm1/state.json`; indented JSON, direct write with requested mode 0600. Includes display history, failure counters, stock sync and service restore metadata. |
+| Cycle log | `~/.local/state/trmnl-rm1/cycles.log`; appended JSONL, requested mode 0600, no rotation in the application. |
+| Prepared display image | `~/.local/state/trmnl-rm1/current.png`; written before invoking the renderer, so its presence alone does not prove display success. |
+| Download cache | `~/.cache/trmnl-rm1/downloaded.png`; raw downloaded bytes regardless of source image encoding. |
+| Installed service | `/etc/systemd/system/trmnl-rm1-appliance.service`. |
+| Resume hook | `trmnl-rm1-resume` in the first existing `/usr/lib/systemd/system-sleep` or `/lib/systemd/system-sleep`. |
+
+Install detects `sync.service` then `rm-sync.service`, records enabled state, and disables/masks xochitl and sync. Metadata is saved before starting the first cycle. Restore always enables xochitl, conditionally enables the saved sync unit, and keeps state/config/cache files.
+
+## Build and test commands
+
+Run from the repository root. These build/test commands do not install the appliance:
+
+```sh
+go build -o /tmp/trmnl-rm1-host ./cmd/trmnl-rm1
+go test -count=1 -race -cover ./...
+go vet ./...
+GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 \
+  go build -trimpath -ldflags='-s -w' -o /tmp/trmnl-rm1-arm ./cmd/trmnl-rm1
+GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 \
+  go test -c -o /tmp/trmnl-rm1-arm.test ./internal/trmnl
+```
+
+Execute `go test -count=1 -race -cover ./...` and `go vet ./...` on a Linux runner to exercise Linux-tagged tests. Cross-compiling the test binary only checks compilation. The deployment script expects its binary at `build/trmnl-rm1`; see [operations](operations.md) for device procedures and [known drift](tech-debt.md#td-06--operations-and-deployment-drift) before using them.
+
+| Current tests | Scope |
+| --- | --- |
+| [`app_test.go`](../internal/trmnl/app_test.go) | Refresh bounds, full-refresh cadence, BYOS headers and relative image URL. |
+| [`cycle_test.go`](../internal/trmnl/cycle_test.go) | `App.Run` with fixture transport, temporary files and device-effect recorders: changed/unchanged/full-refresh behavior, mode outcomes, failures and effect ordering. Real JSONL/state fixtures live in [`testdata/cycle`](../internal/trmnl/testdata/cycle). |
+| [`contracts_test.go`](../internal/trmnl/contracts_test.go) | Config defaults/precedence/validation, CLI outputs, XDG paths, state round trip, JSONL append, file permissions, device-ID platform differences. |
+| [`cycle_linux_test.go`](../internal/trmnl/cycle_linux_test.go) | Whole cycle using real Linux mode and scheduling policy with substituted hardware observations/effects. |
+| [`install_common_test.go`](../internal/trmnl/install_common_test.go) | Restore cleanup, aggregate failures, disable sequence and missing artifacts. |
+| [`install_linux_test.go`](../internal/trmnl/install_linux_test.go) | Installed artifacts, command ordering, metadata saved before first cycle, state not overwritten after start, save failure preventing start, nonblocking resume hook. |
+| [`runtime_linux_test.go`](../internal/trmnl/runtime_linux_test.go) | Mode precedence/errors and USB activity semantics. |
+| [`power_linux_test.go`](../internal/trmnl/power_linux_test.go) | Alternating timer commands, zero-interval fallback, RTC/awake scheduling and combined error semantics. |
+
+The dependency seams preserve the production implementations and introduce no new exported API or data format. Tests do not execute real systemd, suspend, rfkill, or device sysfs writes. Prepared-image tests verify the cycle's handoff bytes; display pixel equivalence and hardware timing remain work for later phases.
+
+Phase 1 verification uses Go 1.26.2 on darwin/arm64 and Linux/arm64 in the `golang:1.26.2` Docker image. Both suites pass with race detection, and both vet checks pass. Linux ARMv7 executable and test binary compilation passes. CI repeats macOS/Linux checks and ARMv7 compilation. See [Phase 1 evidence](phase-1-validation.md) for results and limits. No device deployment, physical rendering, suspend, or restore was performed.

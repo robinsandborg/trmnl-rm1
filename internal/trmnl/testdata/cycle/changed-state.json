@@ -1,0 +1,15 @@
+{
+  "last_image_hash": "5594c5a9d2e3eaa2d7771ad614c53483e4efef2e2b66d1481144155d753b1c48",
+  "last_image_url": "http://larapaper.test/images/current.png",
+  "last_filename": "screen.png",
+  "rendered_updates": 1,
+  "consecutive_failures": 0,
+  "last_success_at": "2026-09-14T10:00:00Z",
+  "last_failure_at": "0001-01-01T00:00:00Z",
+  "last_interval_seconds": 900,
+  "last_cycle_changed": true,
+  "last_mode": "appliance",
+  "stock_sync_unit": "rm-sync.service",
+  "xochitl_was_enabled": true,
+  "sync_was_enabled": true
+}

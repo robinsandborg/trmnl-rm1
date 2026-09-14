@@ -32,17 +32,29 @@ func readBatterySample(cfg Config) (*BatterySample, error) {
 	return nil, nil
 }
 
+type scheduleDeps struct {
+	wakeAlarm    func(Config, time.Duration) error
+	transientRun func(time.Duration) error
+}
+
 func planNextCycle(cfg Config, interval time.Duration, mode RuntimeMode) (RuntimeMode, error) {
+	return planNextCycleWithDeps(cfg, interval, mode, scheduleDeps{
+		wakeAlarm:    scheduleWakeAlarm,
+		transientRun: scheduleTransientRun,
+	})
+}
+
+func planNextCycleWithDeps(cfg Config, interval time.Duration, mode RuntimeMode, deps scheduleDeps) (RuntimeMode, error) {
 	if !mode.ShouldSuspend {
-		if err := scheduleTransientRun(interval); err != nil {
+		if err := deps.transientRun(interval); err != nil {
 			return mode, err
 		}
 		return mode, nil
 	}
 
-	if err := scheduleWakeAlarm(cfg, interval); err != nil {
+	if err := deps.wakeAlarm(cfg, interval); err != nil {
 		fallback := RuntimeMode{Name: "awake-fallback", MaintenanceReason: "rtc-fallback", ShouldSuspend: false}
-		if timerErr := scheduleTransientRun(interval); timerErr != nil {
+		if timerErr := deps.transientRun(interval); timerErr != nil {
 			return mode, fmt.Errorf("schedule wake alarm: %w; transient timer fallback failed: %v", err, timerErr)
 		}
 		return fallback, nil

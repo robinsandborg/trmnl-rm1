@@ -18,14 +18,17 @@ type App struct {
 	stdout io.Writer
 	stderr io.Writer
 	now    func() time.Time
+	cycle  cycleDeps
 }
 
 func NewApp(stdout, stderr io.Writer) *App {
-	return &App{
+	app := &App{
 		stdout: stdout,
 		stderr: stderr,
 		now:    time.Now,
 	}
+	app.cycle = defaultCycleDeps(app.prepareNetwork)
+	return app
 }
 
 func (a *App) Run(args []string) error {
@@ -101,13 +104,13 @@ func (a *App) runOnce(paths Paths) error {
 	}
 
 	startedAt := a.now().UTC()
-	battery, _ := readBatterySample(cfg)
-	runtimeMode, err := determineRuntimeMode(paths, cfg, state, a.now())
+	battery, _ := a.cycle.readBatterySample(cfg)
+	runtimeMode, err := a.cycle.determineRuntimeMode(paths, cfg, state, a.now())
 	if err != nil {
 		return err
 	}
 
-	client, cleanupNetwork, err := a.prepareNetwork(cfg)
+	client, cleanupNetwork, err := a.cycle.prepareNetwork(cfg)
 	if err != nil {
 		return a.finishCycle(paths, cfg, state, CycleLog{
 			StartedAt:        startedAt,
@@ -145,7 +148,7 @@ func (a *App) runOnce(paths Paths) error {
 	skipped := !changed
 	fullRefresh := changed && shouldUseFullRefresh(state.RenderedUpdates, cfg.fullRefreshEvery())
 
-	if err := os.WriteFile(paths.DownloadedImage, imageBytes, 0o600); err != nil {
+	if err := a.cycle.writeFile(paths.DownloadedImage, imageBytes, 0o600); err != nil {
 		return err
 	}
 
@@ -154,7 +157,7 @@ func (a *App) runOnce(paths Paths) error {
 		if fullRefresh {
 			renderMode = RefreshFull
 		}
-		if err := renderImage(cfg, imageBytes, paths.LastRenderedImage, renderMode); err != nil {
+		if err := a.cycle.renderImage(cfg, imageBytes, paths.LastRenderedImage, renderMode); err != nil {
 			ce := classifyCycleError("render", err)
 			return a.finishCycle(paths, cfg, state, CycleLog{
 				StartedAt:        startedAt,
@@ -185,7 +188,7 @@ func (a *App) runOnce(paths Paths) error {
 	state.LastFailureMessage = ""
 	state.ConsecutiveFailures = 0
 
-	effectiveMode, err := planNextCycle(cfg, interval, runtimeMode)
+	effectiveMode, err := a.cycle.planNextCycle(cfg, interval, runtimeMode)
 	if err != nil {
 		ce := classifyCycleError("schedule", err)
 		return a.finishCycle(paths, cfg, state, CycleLog{
@@ -220,10 +223,10 @@ func (a *App) runOnce(paths Paths) error {
 		MaintenanceReason: effectiveMode.MaintenanceReason,
 	}
 
-	if err := appendCycleLog(paths, logEntry); err != nil {
+	if err := a.cycle.appendCycleLog(paths, logEntry); err != nil {
 		return err
 	}
-	if err := saveState(paths, state); err != nil {
+	if err := a.cycle.saveState(paths, state); err != nil {
 		return err
 	}
 
@@ -231,7 +234,7 @@ func (a *App) runOnce(paths Paths) error {
 	networkCleaned = true
 
 	if effectiveMode.ShouldSuspend {
-		if err := suspendDevice(cfg); err != nil {
+		if err := a.cycle.suspendDevice(cfg); err != nil {
 			return a.finishCycle(paths, cfg, state, CycleLog{
 				StartedAt:        startedAt,
 				EndedAt:          a.now().UTC(),
@@ -250,19 +253,27 @@ func (a *App) runOnce(paths Paths) error {
 }
 
 func (a *App) prepareNetwork(cfg Config) (*http.Client, func(), error) {
+	return prepareNetworkWithDeps(cfg, networkDeps{
+		bringUp:   bringWiFiUp,
+		bringDown: bringWiFiDown,
+		wait:      waitForConnectivity,
+	})
+}
+
+func prepareNetworkWithDeps(cfg Config, deps networkDeps) (*http.Client, func(), error) {
 	cleanup := func() {}
 	if cfg.DisableWiFiBetweenUpdates {
-		if err := bringWiFiUp(cfg); err != nil {
+		if err := deps.bringUp(cfg); err != nil {
 			return nil, cleanup, err
 		}
 		cleanup = func() {
-			_ = bringWiFiDown(cfg)
+			_ = deps.bringDown(cfg)
 		}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.wifiTimeout())
 	defer cancel()
-	if err := waitForConnectivity(ctx, cfg); err != nil {
+	if err := deps.wait(ctx, cfg); err != nil {
 		cleanup()
 		return nil, func() {}, err
 	}
@@ -291,16 +302,16 @@ func (a *App) finishCycle(paths Paths, cfg Config, state State, entry CycleLog, 
 		entry.MaintenanceReason = "failure-threshold"
 	}
 
-	if logErr := appendCycleLog(paths, entry); logErr != nil {
+	if logErr := a.cycle.appendCycleLog(paths, entry); logErr != nil {
 		return errors.Join(err, logErr)
 	}
-	if saveErr := saveState(paths, state); saveErr != nil {
+	if saveErr := a.cycle.saveState(paths, state); saveErr != nil {
 		return errors.Join(err, saveErr)
 	}
 
-	runtimeMode, modeErr := determineRuntimeMode(paths, cfg, state, a.now())
+	runtimeMode, modeErr := a.cycle.determineRuntimeMode(paths, cfg, state, a.now())
 	if modeErr == nil {
-		_, _ = planNextCycle(cfg, cfg.refreshFallback(), runtimeMode)
+		_, _ = a.cycle.planNextCycle(cfg, cfg.refreshFallback(), runtimeMode)
 	}
 	return err
 }

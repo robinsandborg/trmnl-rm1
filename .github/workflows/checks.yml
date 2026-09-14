@@ -1,0 +1,41 @@
+name: Checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go test -count=1 -race -cover ./...
+      - run: go vet ./...
+
+  arm-build:
+    name: Linux ARMv7 build
+    runs-on: ubuntu-latest
+    env:
+      GOOS: linux
+      GOARCH: arm
+      GOARM: "7"
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go build -trimpath -ldflags='-s -w' -o /tmp/trmnl-rm1 ./cmd/trmnl-rm1
+      - run: go test -c -o /tmp/trmnl-rm1.test ./internal/trmnl
