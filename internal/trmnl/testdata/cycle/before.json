@@ -1,0 +1,17 @@
+{
+  "last_image_hash": "previous",
+  "last_image_url": "http://larapaper.test/old.png",
+  "last_filename": "old.png",
+  "rendered_updates": 0,
+  "consecutive_failures": 2,
+  "last_success_at": "2026-09-13T10:00:00Z",
+  "last_failure_at": "2026-09-13T11:00:00Z",
+  "last_failure_category": "http",
+  "last_failure_message": "previous failure",
+  "last_interval_seconds": 1800,
+  "last_cycle_changed": false,
+  "last_mode": "appliance",
+  "stock_sync_unit": "rm-sync.service",
+  "xochitl_was_enabled": true,
+  "sync_was_enabled": true
+}

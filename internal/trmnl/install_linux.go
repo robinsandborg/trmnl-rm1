@@ -10,7 +10,31 @@ import (
 	"strings"
 )
 
+// installDeps makes installation ordering observable without touching systemd
+// or writing installed artifacts on the host.
+type installDeps struct {
+	writeFile     func(string, []byte, os.FileMode) error
+	executable    func() (string, error)
+	sleepHookDir  func() (string, error)
+	stockSyncUnit func() (string, bool, error)
+	unitEnabled   func(string) bool
+	run           func([]string) error
+	saveState     func(Paths, State) error
+}
+
 func (a *App) runInstall(paths Paths, args []string) error {
+	return runInstallWithDeps(paths, args, installDeps{
+		writeFile:     os.WriteFile,
+		executable:    os.Executable,
+		sleepHookDir:  detectSleepHookDir,
+		stockSyncUnit: detectStockSyncUnit,
+		unitEnabled:   unitEnabled,
+		run:           runCommand,
+		saveState:     saveState,
+	})
+}
+
+func runInstallWithDeps(paths Paths, args []string, deps installDeps) error {
 	if len(args) > 0 {
 		return errors.New("install-appliance does not accept arguments")
 	}
@@ -28,53 +52,53 @@ func (a *App) runInstall(paths Paths, args []string) error {
 		return err
 	}
 
-	exePath, err := os.Executable()
+	exePath, err := deps.executable()
 	if err != nil {
 		return err
 	}
-	sleepDir, err := detectSleepHookDir()
+	sleepDir, err := deps.sleepHookDir()
 	if err != nil {
 		return err
 	}
 	hookPath := filepath.Join(sleepDir, applianceResumeHookName)
 
-	if err := os.WriteFile(applianceServicePath, []byte(renderApplianceService(exePath)), 0o644); err != nil {
+	if err := deps.writeFile(applianceServicePath, []byte(renderApplianceService(exePath)), 0o644); err != nil {
 		return err
 	}
-	if err := os.WriteFile(hookPath, []byte(renderResumeHook()), 0o755); err != nil {
+	if err := deps.writeFile(hookPath, []byte(renderResumeHook()), 0o755); err != nil {
 		return err
 	}
 
-	syncUnit, syncEnabled, err := detectStockSyncUnit()
+	syncUnit, syncEnabled, err := deps.stockSyncUnit()
 	if err != nil {
 		return err
 	}
 	state.StockSyncUnit = syncUnit
 	state.SyncWasEnabled = syncEnabled
-	state.XochitlWasEnabled = unitEnabled("xochitl.service")
+	state.XochitlWasEnabled = deps.unitEnabled("xochitl.service")
 
-	if err := runCommand([]string{"systemctl", "daemon-reload"}); err != nil {
+	if err := deps.run([]string{"systemctl", "daemon-reload"}); err != nil {
 		return err
 	}
-	if err := disableForAppliance("xochitl.service"); err != nil {
+	if err := disableForApplianceWithRunner(deps.run, "xochitl.service"); err != nil {
 		return err
 	}
 	if syncUnit != "" {
-		if err := disableForAppliance(syncUnit); err != nil {
+		if err := disableForApplianceWithRunner(deps.run, syncUnit); err != nil {
 			return err
 		}
 	}
-	if err := runCommand([]string{"systemctl", "enable", applianceServiceName}); err != nil {
+	if err := deps.run([]string{"systemctl", "enable", applianceServiceName}); err != nil {
 		return err
 	}
 	// Persist stock-service metadata before the first run. `systemctl start`
 	// on a oneshot service blocks until the service exits, and run-once
 	// saves its own state at the end of that run. If we save after the start
 	// call instead, we overwrite whatever run-once just persisted.
-	if err := saveState(paths, state); err != nil {
+	if err := deps.saveState(paths, state); err != nil {
 		return err
 	}
-	return runCommand([]string{"systemctl", "start", applianceServiceName})
+	return deps.run([]string{"systemctl", "start", applianceServiceName})
 }
 
 func (a *App) runRestore(paths Paths) error {

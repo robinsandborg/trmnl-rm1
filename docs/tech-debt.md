@@ -1,0 +1,59 @@
+# Technical debt
+
+Inventory updated for Phase 1, 2026-09-14. The [architecture map](architecture.md) now describes committed baseline `2a86333` plus the Phase 1 seams. Phase 0 observations about uncommitted Wi-Fi SDIO and stock-noise work are called out below; they are excluded from this PR. Priorities below are local sequencing judgments, not GitHub triage labels. Risks inferred from code are not claimed as reproduced device failures. Phase 1 adds characterization and documentation corrections; the runtime risks below remain unchanged.
+
+## TD-01 — Cycle behavior lacks characterization
+
+**Phase 1 baseline established; extend per extraction.** [`app.go`](../internal/trmnl/app.go) combines command dispatch, network setup, two HTTP requests, render policy, persistence, scheduling, cleanup, and failure handling in one file. `App` now owns private effect dependencies. Cycle tests exercise `App.Run` with real configuration, state/cache/log I/O and BYOS decoding, checking ordered effects and failure outcomes; [fixtures and coverage](phase-1-validation.md) define the extraction baseline.
+
+The difficult contract is effect ordering: state/log writes before suspend, cleanup on failures, counters after a successful render followed by scheduling failure, and fallback errors. The uncommitted SDIO work observed in Phase 0 additionally needs enumeration-before-validation characterization when it is integrated. A refactor could silently change recoverability. Use the captured outputs and effect traces when migrating callers one seam at a time. Preserve current quirks unless separately approved with a migration note.
+
+## TD-02 — Host checks omit device-critical paths
+
+**Automated platform gap addressed in Phase 1; hardware gap remains.** Build tags exclude Linux implementations on macOS. [CI](../.github/workflows/checks.yml) now runs both platforms with race detection/vet plus ARMv7 builds. The local Linux suite executes in Docker. Cycle/persistence/network-lifecycle/install-order contracts are covered, but display transforms, actual association, sysfs power effects, full install rollback, and device timing still need later-phase evidence.
+
+Run host and Linux tests plus ARMv7 builds. Add meaningful contract fixtures and failure cases per seam, rather than relying on a coverage percentage. Hardware smoke checks remain necessary for FBInk orientation, repeated suspend/resume, SDIO rebinding, and service restoration; cross-compilation cannot establish these properties.
+
+## TD-03 — Restore metadata and cycle state share fragile persistence
+
+**High; persistence contract captured, durability/lifecycle risks remain.** [`saveState`](../internal/trmnl/config.go) truncates and rewrites one JSON file. No atomic replacement or cycle lock exists. `State` combines replaceable display history with stock-service restoration metadata. A crash during a write or overlapping manual/service cycles could lose metadata or overwrite newer state.
+
+[`runInstall`](../internal/trmnl/install_linux.go) changes service state before saving its snapshot; a failure in between can leave side effects without durable recovery metadata. Reinstall reads current enabled states again and can overwrite the original snapshot. Restore always enables xochitl and records only enabled status for other units, not a complete original active/masked state. These are concrete implementation limits, not proof of a device incident.
+
+First preserve the existing file contract behind a storage seam. Atomic writes, locking, durable installation progress, or a split/versioned state format need separately approved changes, failure tests, and downgrade instructions; do not hide them in a file move.
+
+## TD-04 — Recovery scheduling and diagnostics are inconsistent
+
+**High; characterized in Phase 1, behavior unchanged.** In [`app.go`](../internal/trmnl/app.go), some file/config/mode failures bypass `finishCycle`. `finishCycle` ignores mode/scheduling errors after persistence. An RTC alarm can be armed during failure finalization even though that path never suspends. Failure recovery therefore does not uniformly guarantee an awake retry. Network cleanup errors and battery read errors are also discarded.
+
+Success records `LastMode` before RTC fallback changes the effective mode. A suspend failure can append a second log after a success log/state write. Scheduling failure occurs after success counters have been reset. The cycle tests now preserve these observable results; changing error categories, counter semantics, retry behavior, or log shape requires a focused behavior change and migration note.
+
+## TD-05 — Hardware policy and low-level effects are intertwined
+
+**High for extraction risk.** [`network_linux.go`](../internal/trmnl/network_linux.go) combines link control and real-time connectivity polling. The uncommitted implementation observed in Phase 0 additionally mixes systemd, rfkill, SDIO discovery, and fixed sysfs paths; that work is outside this PR. [`render_linux.go`](../internal/trmnl/render_linux.go) puts pure crop/grayscale/rotation code behind Linux tags alongside FBInk commands. [`power_linux.go`](../internal/trmnl/power_linux.go) combines battery sampling, runtime observations, RTC writes, timers, and suspend.
+
+Existing runner/dependency seams in power, runtime mode, and restore provide a starting point. Keep their device-specific ordering: A/B timers must not stop their own service; the resume hook must remain nonblocking; the pending SDIO changes require Wi-Fi re-enumeration before MAC fallback. Historical fixes `379df59`, `0ccf51d`, and `2d6db09` show these orderings have already mattered. Move one cohesive module at a time and verify command traces plus actual device behavior where applicable.
+
+## TD-06 — Operations and deployment drift
+
+**Documentation corrected in Phase 1; runtime risks remain.** [`operations.md`](operations.md) now names both `next-a` and `next-b`, explains how to quiesce cycles, preserves state during refresh/rollback, and documents deployment-helper limitations. [`runRestoreWithOps`](../internal/trmnl/install_common.go) disables the appliance service but does not stop either transient timer/service; a pending timer could restart cycling after restore. Timer cleanup is a behavior fix requiring its own approval, beyond correcting documentation.
+
+The old runbook suggested deleting `state.json` to force a full refresh, losing install metadata without forcing a full first render. That instruction has been replaced with a direct FBInk redraw of the prepared file. [`deploy.sh`](../deploy/deploy.sh) checks FBInk under `/home/root/bin` but its missing-tool message says `/usr/local/bin`. It overwrites binary/config without retaining a previous version and clears the maintenance sentinel after installation even if it predated deployment.
+
+The rollback procedure retains the previous binary and compatible configuration/state; physical-device verification remains pending before rollout. Separately approve changes to restore/deploy behavior and guard them with lifecycle tests. Keep destructive device experiments outside automated unit tests.
+
+## TD-07 — Configuration contracts are implicit
+
+**Medium.** [`types.go`](../internal/trmnl/types.go) mixes wire structures, installation state, defaults, and policy helpers. Effective accessors replace nonpositive values with defaults; several validation checks therefore cannot reject raw nonpositive input. Rotation zero also selects the default. Nested and top-level full-refresh fields coexist; `framebuffer_device` is reserved but unused. Linux and non-Linux configured device-ID trimming differ.
+
+Characterize omitted/zero/negative fields, nested precedence, unknown JSON fields, and platform differences. Preserve public Go surfaces and serialized forms during package moves using legacy wrappers and explicit narrow mappings. Changing accepted inputs or precedence is a compatibility change, not incidental cleanup.
+
+## TD-08 — Resource limits and command cancellation are absent
+
+**Medium; evaluate separately from structural work.** [`fetchCyclePayload`](../internal/trmnl/app.go) uses unbounded `io.ReadAll` for images; decoding/scaling can allocate according to input dimensions. HTTP requests have timeouts, but [`system.go`](../internal/trmnl/system.go) uses `exec.Command` without a deadline. Cycle logs append indefinitely. On a constrained appliance, large inputs, a stuck command, or growing logs could exhaust resources or prevent a cycle from finishing.
+
+Body/pixel limits, command cancellation, and log retention would change accepted input or runtime behavior. Define limits and failure semantics in a separately approved change, with representative payloads and rollback notes.
+
+## Proposed order and verification limits
+
+Follow [the strangler plan](refactoring-plan.md): establish behavioral evidence, extract leaf modules, then move orchestration and retire forwarding code. This inventory is not an instruction to fix every item in one PR. Phase 1 verifies host and Linux suites/vet plus ARM compilation. Physical-device behavior remains unverified; see [validation evidence](phase-1-validation.md).
