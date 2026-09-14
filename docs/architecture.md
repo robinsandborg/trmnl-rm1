@@ -4,7 +4,7 @@ Updated for Phase 5 on 2026-09-14, based on merged Phase 3 commit `af5c8ec` in a
 
 ## Shape and entrypoints
 
-One Go module, `github.com/robinsandborg/rm1-trmnl`, declares Go 1.26 and depends on `golang.org/x/image v0.39.0` for BMP decoding. There are six Go packages: executable `cmd/trmnl-rm1`, CLI/cycle composition in `internal/trmnl`, protocol module `internal/byos`, image preparation/rendering in `internal/display`, paths/file I/O in `internal/storage`, and wireless connectivity/identity in `internal/network`. Dependencies flow from the executable to `trmnl`, then to `byos`, `display`, `storage`, and `network`. No extracted package imports `trmnl`; BYOS uses only the standard library, while display also uses the BMP decoder. There is no Makefile. [GitHub Actions checks](../.github/workflows/checks.yml) run macOS/Linux tests and vet plus ARMv7 executable/test compilation.
+One Go module, `github.com/robinsandborg/rm1-trmnl`, declares Go 1.26 and depends on `golang.org/x/image v0.39.0` for BMP decoding. There are seven Go packages: executable `cmd/trmnl-rm1`, CLI/cycle composition in `internal/trmnl`, protocol module `internal/byos`, image preparation/rendering in `internal/display`, paths/file I/O in `internal/storage`, wireless connectivity/identity in `internal/network`, and runtime mode/battery/scheduling/suspend in `internal/power`. Dependencies flow from the executable to `trmnl`, then to `byos`, `display`, `storage`, `network`, and `power`. No extracted package imports `trmnl`; BYOS uses only the standard library, while display also uses the BMP decoder. There is no Makefile. [GitHub Actions checks](../.github/workflows/checks.yml) run macOS/Linux tests and vet plus ARMv7 executable/test compilation.
 
 | Entrypoint | Implementation and effects |
 | --- | --- |
@@ -16,7 +16,7 @@ One Go module, `github.com/robinsandborg/rm1-trmnl`, declares Go 1.26 and depend
 | `install-appliance` | [`install_linux.go`](../internal/trmnl/install_linux.go) writes systemd unit and resume hook, changes stock services, saves restore metadata, starts appliance service. Rejects arguments. |
 | `restore-stock` | Linux entrypoint delegates to [`runRestoreWithOps`](../internal/trmnl/install_common.go); removes appliance artifacts and restores stock services with aggregated errors. |
 | Boot/resume | Generated `trmnl-rm1-appliance.service` runs the executable with `run-once`, root, and `HOME=/home/root`. The sleep hook's `post` case uses `systemctl start --no-block`. |
-| Awake next cycle | [`power_linux.go`](../internal/trmnl/power_linux.go) alternates `trmnl-rm1-next-a` and `trmnl-rm1-next-b` timer/service names, avoiding the current unit. |
+| Awake next cycle | [`power/power_linux.go`](../internal/power/power_linux.go) alternates `trmnl-rm1-next-a` and `trmnl-rm1-next-b` timer/service names, avoiding the current unit. |
 | Deployment | [`deploy/deploy.sh`](../deploy/deploy.sh) copies binary/config over SSH, sets maintenance, validates and runs a cycle; optional `appliance` installs and clears maintenance. [`bootstrap-ssh-key.sh`](../deploy/bootstrap-ssh-key.sh) bootstraps access. |
 
 ## Runtime flow
@@ -59,8 +59,8 @@ Success schedules first, appends JSONL, writes state, tears down networking, the
 | Configuration and persistence | [`config.go`](../internal/trmnl/config.go), [`paths.go`](../internal/trmnl/paths.go), [`types.go`](../internal/trmnl/types.go) | `internal/storage` owns path layout, directory creation, JSON reads/writes, cache writes and JSONL append. The facade retains JSON types, load defaults, and validation; existing types are passed directly to the encoder/decoder to preserve error type names. Runtime and installation metadata share `State`. |
 | Display | [`display/prepare.go`](../internal/display/prepare.go), [`display/render_linux.go`](../internal/display/render_linux.go), [`display/png.go`](../internal/display/png.go), [`trmnl/render.go`](../internal/trmnl/render.go) | Portable `Prepare` decodes PNG/JPEG/GIF/BMP, rotates portrait input, center-crops/scales to grayscale, then applies optional software rotation. Linux `Render` writes PNG before custom or FBInk/fbdepth commands through a supplied runner. The facade supplies effective config values and the existing command runner; refresh cadence stays in the cycle. |
 | Network and identity | [`network/network_linux.go`](../internal/network/network_linux.go), [`network/deviceid_linux.go`](../internal/network/deviceid_linux.go), [`trmnl/network.go`](../internal/trmnl/network.go) | Command overrides and ordered link-command fallbacks; wireless identity from sysfs. `prepareNetworkWithDeps` exposes acquisition/cleanup without controlling the test host network. Connectivity HEAD accepts status 200–499 and retries every two seconds. |
-| Runtime mode | [`runtime_linux.go`](../internal/trmnl/runtime_linux.go) | `runtimeModeDeps` injects sentinel stat, USB observation, and uptime; USB helper accepts a sysfs root. |
-| Wake and power | [`power_linux.go`](../internal/trmnl/power_linux.go) | RTC sysfs/rtcwake, alternating systemd timers, cgroup self-unit lookup, battery sysfs, suspend command override. `planNextCycleWithDeps` exposes RTC/timer effects; the timer helper accepts a command runner. |
+| Runtime mode | [`power/runtime_linux.go`](../internal/power/runtime_linux.go) | `runtimeModeDeps` injects sentinel stat, USB observation, and uptime; USB helper accepts a sysfs root. |
+| Wake and power | [`power/power_linux.go`](../internal/power/power_linux.go) | RTC sysfs/rtcwake, alternating systemd timers, cgroup self-unit lookup, battery sysfs, suspend command override. `planNextCycleWithDeps` exposes RTC/timer effects; the timer helper accepts a command runner. |
 | Appliance lifecycle | [`install_linux.go`](../internal/trmnl/install_linux.go), [`install_common.go`](../internal/trmnl/install_common.go) | `applianceOps` and runner functions cover restore and stop/disable/mask sequences; `runInstallWithDeps` supplies real file/systemd effects in production and records installation ordering in tests. |
 | Process execution | [`system.go`](../internal/trmnl/system.go) | Concrete `os/exec` wrappers, stderr capture, ordered command fallback. |
 
@@ -126,3 +126,5 @@ Phase 3 repeats host/Linux race tests and vet plus ARMv7 executable and all-pack
 Phase 4 storage code and evidence: [file operations](../internal/storage/files.go), [paths](../internal/storage/paths.go), [validation](phase-4-validation.md).
 
 Phase 5: `network.Prepare` owns acquisition/cleanup, using supplied operations; Linux link controls accept the command runner and device identity accepts a sysfs root for tests. The facade retains config defaults and the cycle call site. See [validation](phase-5-validation.md).
+
+Phase 6: the power facade maps effective options and legacy battery/mode types. Linux runtime observations and scheduling expose the existing test dependencies. See [validation](phase-6-validation.md).
