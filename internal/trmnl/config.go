@@ -1,10 +1,9 @@
 package trmnl
 
 import (
-	"encoding/json"
 	"fmt"
+	"github.com/robinsandborg/rm1-trmnl/internal/storage"
 	"net/url"
-	"os"
 	"strings"
 )
 
@@ -15,16 +14,8 @@ func loadConfig(paths Paths) (Config, error) {
 		FBInkNoViewport:           true,
 	}
 
-	data, err := os.ReadFile(paths.ConfigFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return config, nil
-		}
+	if err := storage.LoadJSON(paths.ConfigFile, "config", &config); err != nil {
 		return Config{}, err
-	}
-
-	if err := json.Unmarshal(data, &config); err != nil {
-		return Config{}, fmt.Errorf("parse config %s: %w", paths.ConfigFile, err)
 	}
 
 	if config.BaseURL == "" {
@@ -33,25 +24,11 @@ func loadConfig(paths Paths) (Config, error) {
 	return config, nil
 }
 
-func saveState(paths Paths, state State) error {
-	data, err := json.MarshalIndent(state, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(paths.StateFile, data, 0o600)
-}
-
+func saveState(paths Paths, state State) error { return storage.SaveJSON(paths.StateFile, state) }
 func loadState(paths Paths) (State, error) {
 	var state State
-	data, err := os.ReadFile(paths.StateFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return state, nil
-		}
+	if err := storage.LoadJSON(paths.StateFile, "state", &state); err != nil {
 		return State{}, err
-	}
-	if err := json.Unmarshal(data, &state); err != nil {
-		return State{}, fmt.Errorf("parse state %s: %w", paths.StateFile, err)
 	}
 	return state, nil
 }
