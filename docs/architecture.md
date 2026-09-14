@@ -146,3 +146,7 @@ Phase 6: the power facade maps effective options and legacy battery/mode types. 
 Phase 7: [`appliance/install.go`](../internal/appliance/install.go) owns installation sequencing and templates; [`appliance/restore.go`](../internal/appliance/restore.go) owns restoration. The facade loads/validates config and maps the three stock-service snapshot fields into the retained state DTO. See [validation](phase-7-validation.md).
 
 Phase 9: [cycle extraction evidence](phase-9-validation.md). All earlier golden fixtures and effect traces pass through the final composition. Hardware verification is still outstanding.
+
+## Deployed RM1 compatibility
+
+[`network/radio_linux.go`](../internal/network/radio_linux.go) supplies bounded SDIO enumeration and radio/supplicant lifecycle operations on brcmfmac-equipped devices. CLI identity validation and cycle/install entrypoints enumerate before reading the wireless MAC. Stock restore brings networking back before starting the UI. The facade and cycle retain the deployed optional `masked_noise` restore map; appliance install/restore preserves and reapplies those known service settings. See [device validation and migration notes](device-validation.md).

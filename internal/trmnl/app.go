@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/robinsandborg/rm1-trmnl/internal/cycle"
@@ -69,6 +70,9 @@ func (a *App) runValidate(paths Paths) error {
 	if err != nil {
 		return err
 	}
+	if strings.TrimSpace(cfg.DeviceID) == "" && a.cycle.ensureInterface != nil {
+		a.cycle.ensureInterface(cfg)
+	}
 	if err := validateConfig(paths, cfg); err != nil {
 		return err
 	}
@@ -80,6 +84,9 @@ func (a *App) runPrintDeviceID(paths Paths) error {
 	cfg, err := loadConfig(paths)
 	if err != nil {
 		return err
+	}
+	if strings.TrimSpace(cfg.DeviceID) == "" && a.cycle.ensureInterface != nil {
+		a.cycle.ensureInterface(cfg)
 	}
 	deviceID, err := resolveDeviceID(cfg)
 	if err != nil {
@@ -93,6 +100,11 @@ func (a *App) runOnce(paths Paths) error {
 	cfg, err := loadConfig(paths)
 	if err != nil {
 		return err
+	}
+	// The deployed appliance unbinds SDIO between cycles. Re-enumerate before
+	// validation tries the wireless MAC fallback. Keep this effect injectable.
+	if a.cycle.ensureInterface != nil {
+		a.cycle.ensureInterface(cfg)
 	}
 	if err := validateConfig(paths, cfg); err != nil {
 		return err

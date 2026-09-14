@@ -23,9 +23,13 @@ func TestLinkFallbacksAndOverrides(t *testing.T) {
 		fail := errors.New("link failed")
 		run := func(argv []string) error { calls = append(calls, argv); return fail }
 		opts := network.Options{Interface: "wlan7"}
-		action, verb, legacy := network.BringUp, "up", "ifup"
+		action, verb, legacy := func(o network.Options, r func([]string) error) error {
+			return network.BringUpWithOps(o, network.LinkOps{Run: r})
+		}, "up", "ifup"
 		if down {
-			action, verb, legacy = network.BringDown, "down", "ifdown"
+			action, verb, legacy = func(o network.Options, r func([]string) error) error {
+				return network.BringDownWithOps(o, network.LinkOps{Run: r})
+			}, "down", "ifdown"
 		}
 		err := action(opts, run)
 		want := [][]string{{"ip", "link", "set", "wlan7", verb}, {"ifconfig", "wlan7", verb}, {legacy, "wlan7"}}

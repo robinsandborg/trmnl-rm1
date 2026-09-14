@@ -35,21 +35,22 @@ type Error struct {
 func (e *Error) Error() string { return e.Err.Error() }
 
 type State struct {
-	LastImageHash       string    `json:"last_image_hash,omitempty"`
-	LastImageURL        string    `json:"last_image_url,omitempty"`
-	LastFilename        string    `json:"last_filename,omitempty"`
-	RenderedUpdates     int       `json:"rendered_updates"`
-	ConsecutiveFailures int       `json:"consecutive_failures"`
-	LastSuccessAt       time.Time `json:"last_success_at,omitempty"`
-	LastFailureAt       time.Time `json:"last_failure_at,omitempty"`
-	LastFailureCategory string    `json:"last_failure_category,omitempty"`
-	LastFailureMessage  string    `json:"last_failure_message,omitempty"`
-	LastIntervalSeconds int       `json:"last_interval_seconds,omitempty"`
-	LastCycleChanged    bool      `json:"last_cycle_changed"`
-	LastMode            string    `json:"last_mode,omitempty"`
-	StockSyncUnit       string    `json:"stock_sync_unit,omitempty"`
-	XochitlWasEnabled   bool      `json:"xochitl_was_enabled,omitempty"`
-	SyncWasEnabled      bool      `json:"sync_was_enabled,omitempty"`
+	MaskedNoise         map[string]bool `json:"masked_noise,omitempty"`
+	LastImageHash       string          `json:"last_image_hash,omitempty"`
+	LastImageURL        string          `json:"last_image_url,omitempty"`
+	LastFilename        string          `json:"last_filename,omitempty"`
+	RenderedUpdates     int             `json:"rendered_updates"`
+	ConsecutiveFailures int             `json:"consecutive_failures"`
+	LastSuccessAt       time.Time       `json:"last_success_at,omitempty"`
+	LastFailureAt       time.Time       `json:"last_failure_at,omitempty"`
+	LastFailureCategory string          `json:"last_failure_category,omitempty"`
+	LastFailureMessage  string          `json:"last_failure_message,omitempty"`
+	LastIntervalSeconds int             `json:"last_interval_seconds,omitempty"`
+	LastCycleChanged    bool            `json:"last_cycle_changed"`
+	LastMode            string          `json:"last_mode,omitempty"`
+	StockSyncUnit       string          `json:"stock_sync_unit,omitempty"`
+	XochitlWasEnabled   bool            `json:"xochitl_was_enabled,omitempty"`
+	SyncWasEnabled      bool            `json:"sync_was_enabled,omitempty"`
 }
 
 type CycleLog struct {

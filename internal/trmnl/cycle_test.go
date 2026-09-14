@@ -388,7 +388,7 @@ func TestCycleFailures(t *testing.T) {
 				t.Fatal("restore metadata lost")
 			}
 			if tc.category == "" {
-				if state != h.before {
+				if !reflect.DeepEqual(state, h.before) {
 					t.Fatalf("direct error mutated state: %+v", state)
 				}
 			} else {
@@ -491,7 +491,7 @@ func TestCycleFailureFinalizationErrors(t *testing.T) {
 				trace += " schedule:30m0s:recovery"
 			}
 			h.wantTrace(trace + " wifi-down")
-			if wantJoined && h.state() != h.before {
+			if wantJoined && !reflect.DeepEqual(h.state(), h.before) {
 				t.Fatal("failed persistence changed state")
 			}
 			if !wantJoined && h.state().ConsecutiveFailures != 3 {

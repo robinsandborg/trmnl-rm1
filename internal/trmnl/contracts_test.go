@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -69,7 +70,7 @@ func TestConfigValidationBounds(t *testing.T) {
 func TestStateAndLogFileContracts(t *testing.T) {
 	paths := isolatedPaths(t)
 	state, err := loadState(paths)
-	if err != nil || state != (State{}) {
+	if err != nil || !reflect.DeepEqual(state, State{}) {
 		t.Fatalf("missing state = %+v, %v", state, err)
 	}
 	before := readFixture(t, "before.json")

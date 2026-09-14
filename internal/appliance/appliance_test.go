@@ -54,3 +54,57 @@ func TestInstallStopsAtFailedWrite(t *testing.T) {
 		t.Fatalf("%v %v", paths, err)
 	}
 }
+
+func TestRestoreDeployedMaskedServices(t *testing.T) {
+	var calls [][]string
+	err := appliance.Restore(appliance.Snapshot{MaskedNoise: map[string]bool{"chronyd.service": true, "memfaultd.service": false, "unknown.service": true}}, appliance.RestoreOps{
+		Run: func(argv []string) error { calls = append(calls, argv); return nil }, Remove: func(string) error { return nil }, SleepHookDir: func() (string, error) { return "/sleep", nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := [][]string{{"systemctl", "unmask", "chronyd.service"}, {"systemctl", "enable", "--now", "chronyd.service"}, {"systemctl", "unmask", "memfaultd.service"}}
+	if !reflect.DeepEqual(calls[len(calls)-3:], want) {
+		t.Fatalf("%v", calls)
+	}
+	for _, call := range calls {
+		if strings.Contains(strings.Join(call, " "), "unknown.service") {
+			t.Fatal("restored an unrecognized unit")
+		}
+	}
+}
+
+func TestReinstallKeepsDeployedOriginalMetadata(t *testing.T) {
+	before := appliance.Snapshot{StockSyncUnit: "rm-sync.service", SyncWasEnabled: true, XochitlWasEnabled: true, MaskedNoise: map[string]bool{"chronyd.service": true}}
+	var saved appliance.Snapshot
+	err := appliance.Install(before, appliance.InstallDeps{
+		Executable: func() (string, error) { return "/bin/client", nil }, SleepHookDir: func() (string, error) { return "/sleep", nil }, WriteFile: func(string, []byte, os.FileMode) error { return nil }, StockSyncUnit: func() (string, bool, error) { return "rm-sync.service", false, nil }, UnitEnabled: func(string) bool { return false }, UnitExists: func(unit string) bool { return unit == "chronyd.service" || unit == "memfaultd.service" }, Run: func([]string) error { return nil }, SaveState: func(s appliance.Snapshot) error { saved = s; return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !saved.SyncWasEnabled || !saved.XochitlWasEnabled || !saved.MaskedNoise["chronyd.service"] {
+		t.Fatalf("original state overwritten: %+v", saved)
+	}
+	if _, ok := saved.MaskedNoise["memfaultd.service"]; !ok {
+		t.Fatal("newly masked service not recorded")
+	}
+	if len(before.MaskedNoise) != 1 {
+		t.Fatal("input metadata mutated")
+	}
+}
+
+func TestRestoreRecoversNetworkingBeforeStockUI(t *testing.T) {
+	var trace []string
+	fail := errors.New("radio failed")
+	err := appliance.Restore(appliance.Snapshot{}, appliance.RestoreOps{
+		Run: func(argv []string) error { trace = append(trace, strings.Join(argv, " ")); return nil }, Remove: func(string) error { return nil }, SleepHookDir: func() (string, error) { return "/sleep", nil }, RestoreNetwork: func() error { trace = append(trace, "network"); return fail },
+	})
+	if !errors.Is(err, fail) || err.Error() != "restore wireless networking: radio failed" {
+		t.Fatal(err)
+	}
+	want := []string{"systemctl disable --now trmnl-rm1-appliance.service", "systemctl daemon-reload", "network", "systemctl unmask xochitl.service", "systemctl enable --now xochitl.service"}
+	if !reflect.DeepEqual(trace, want) {
+		t.Fatalf("%v", trace)
+	}
+}

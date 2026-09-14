@@ -77,3 +77,7 @@ Appliance install/restore is isolated behind command/file operations and a three
 ## Phase 9 status
 
 Cycle orchestration is extracted and composed through the original compatibility facade. Existing exact state/log/image fixtures and event traces pass through the final composition. Obsolete command-fallback code and filename constants were removed. Optional Phase 8 behavior work is reserved for concrete recovery/device findings; the durability and early-retry debt above is not silently changed by extraction. See [validation](phase-9-validation.md).
+
+## Device validation findings
+
+The deployed appliance had SDIO and `masked_noise` behavior absent from the committed baseline. Device validation reproduced identity failure with an unbound radio and metadata loss in a state round trip. The compatibility fix integrates bounded enumeration, the deployed radio lifecycle, metadata retention/restoration, and network recovery when returning to stock. Existing recorded enablement flags now survive reinstall. General durable metadata recovery (including unmarked all-false snapshots), atomic writes, retry ownership, and timer cleanup remain backlog work. See [device evidence and rollback](device-validation.md).

@@ -11,27 +11,53 @@ import (
 )
 
 func BringUp(cfg Options, run func([]string) error) error {
+	return BringUpWithOps(cfg, defaultLinkOps(run))
+}
+func BringUpWithOps(cfg Options, ops LinkOps) error {
+	run := ops.Run
 	if len(cfg.WiFiUpCommand) > 0 {
 		return run(cfg.WiFiUpCommand)
 	}
+	if ops.Ensure != nil {
+		ops.Ensure(cfg.Interface)
+	}
+	if ops.Start != nil {
+		if err := ops.Start(); err != nil {
+			return err
+		}
+	}
 	iface := cfg.Interface
-	return firstSuccessful(run,
+	if err := firstSuccessful(run,
 		[]string{"ip", "link", "set", iface, "up"},
 		[]string{"ifconfig", iface, "up"},
 		[]string{"ifup", iface},
-	)
+	); err != nil {
+		return err
+	}
+	if ops.AfterUp != nil {
+		ops.AfterUp()
+	}
+	return nil
 }
 
 func BringDown(cfg Options, run func([]string) error) error {
+	return BringDownWithOps(cfg, defaultLinkOps(run))
+}
+func BringDownWithOps(cfg Options, ops LinkOps) error {
+	run := ops.Run
 	if len(cfg.WiFiDownCommand) > 0 {
 		return run(cfg.WiFiDownCommand)
 	}
 	iface := cfg.Interface
-	return firstSuccessful(run,
+	linkErr := firstSuccessful(run,
 		[]string{"ip", "link", "set", iface, "down"},
 		[]string{"ifconfig", iface, "down"},
 		[]string{"ifdown", iface},
 	)
+	if ops.Stop != nil {
+		ops.Stop()
+	}
+	return linkErr
 }
 
 func Wait(ctx context.Context, cfg Options) error {
