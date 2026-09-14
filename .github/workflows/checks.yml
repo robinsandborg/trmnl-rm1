@@ -38,6 +38,7 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go build -trimpath -ldflags='-s -w' -o /tmp/trmnl-rm1 ./cmd/trmnl-rm1
+      - run: go build -trimpath -ldflags='-s -w' -o /tmp/trmnl-power-report ./cmd/trmnl-power-report
       - run: |
           mkdir -p /tmp/trmnl-tests
           go test -c -o /tmp/trmnl-tests/ ./...

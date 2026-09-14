@@ -88,6 +88,8 @@ trmnl-rm1 restore-stock
 
 Day-to-day commands for SSH'ing in, pushing new builds, forcing a refresh, restoring the tablet, and recovering from a stuck state live in [docs/operations.md](docs/operations.md).
 
+For short battery life, use the standalone cycle-log report and unplugged comparison procedure in [docs/battery-life.md](docs/battery-life.md).
+
 ## Logs And State
 
 - Config: `~/.config/trmnl-rm1/config.json`
