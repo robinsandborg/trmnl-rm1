@@ -47,21 +47,3 @@ func outputCommand(parts []string) (string, error) {
 	}
 	return strings.TrimSpace(string(out)), nil
 }
-
-func firstSuccessful(commands ...[]string) error {
-	var errs []error
-	for _, cmd := range commands {
-		if len(cmd) == 0 {
-			continue
-		}
-		if err := runCommand(cmd); err == nil {
-			return nil
-		} else {
-			errs = append(errs, err)
-		}
-	}
-	if len(errs) == 0 {
-		return errors.New("no commands available")
-	}
-	return errors.Join(errs...)
-}

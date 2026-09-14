@@ -1,6 +1,10 @@
 package trmnl
 
-import "time"
+import (
+	"time"
+
+	"github.com/robinsandborg/rm1-trmnl/internal/cycle"
+)
 
 const (
 	defaultBaseURL              = "http://larapaper.local"
@@ -23,10 +27,6 @@ const (
 	defaultFBInkRotation        = 3
 	defaultFBInkPartialWaveform = "GL16"
 	defaultFBInkFullWaveform    = "GC16"
-	defaultStateFilename        = "state.json"
-	defaultLogFilename          = "cycles.log"
-	defaultRenderedImageName    = "current.png"
-	defaultDownloadedImageName  = "downloaded.png"
 )
 
 type Config struct {
@@ -133,14 +133,7 @@ const (
 	RefreshFull    RefreshMode = "full"
 )
 
-type cycleError struct {
-	Category string
-	Err      error
-}
-
-func (e *cycleError) Error() string {
-	return e.Err.Error()
-}
+type cycleError = cycle.Error
 
 func (c Config) refreshFallback() time.Duration {
 	if c.RefreshFallbackSeconds > 0 {
