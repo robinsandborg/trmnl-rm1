@@ -93,7 +93,7 @@ func TestInstallPersistsBeforeFirstCycle(t *testing.T) {
 			if hook != wantHook {
 				t.Fatalf("resume hook changed:\n%s", hook)
 			}
-			for _, line := range []string{"Type=oneshot\n", "Environment=HOME=/home/root\n", "ExecStart=/home/root/bin/trmnl-rm1 run-once\n", "User=root\n"} {
+			for _, line := range []string{"RequiresMountsFor=/home/root\n", "Type=oneshot\n", "Environment=HOME=/home/root\n", "ExecStart=/home/root/bin/trmnl-rm1 run-once\n", "User=root\n"} {
 				if !strings.Contains(service, line) {
 					t.Fatalf("service missing %q", line)
 				}

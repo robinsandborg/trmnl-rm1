@@ -112,6 +112,7 @@ func RenderService(exePath string) string {
 Description=TRMNL RM1 appliance cycle
 After=network.target
 Wants=network.target
+RequiresMountsFor=/home/root
 
 [Service]
 Type=oneshot

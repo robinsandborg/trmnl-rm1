@@ -276,6 +276,8 @@ This is the rollback procedure for a change that preserves the configuration and
 
 ## SDIO recovery and deployed restore metadata
 
+After upgrading the boot wiring fix, run `install-appliance` once: the unit now requires `/home/root` to be mounted before executing the client. This RM1 mounts `/home` with `nofail`; ordering only after `network.target` allowed a reproducible `203/EXEC` at boot. Reinstallation preserves the recorded stock-service metadata.
+
 The RM1 radio is unbound between appliance cycles to preserve the deployed power behavior. Cycle/install entrypoints enumerate it before validation; `validate` and `print-device-id` also enumerate when they need automatic identity. This can take up to five seconds. Custom Wi-Fi commands retain control of their own radio lifecycle.
 
 Keep `masked_noise` in state: it records original enablement of stock services touched by the deployed appliance. Install preserves recorded values on reinstall; restore unmasks the known entries and re-enables those originally enabled, and recovers Wi-Fi before starting the stock UI. Continue to quiesce A/B timers explicitly before restore. See [device validation](device-validation.md) for tested behavior, compatibility notes, and the retained on-device rollback backup.
