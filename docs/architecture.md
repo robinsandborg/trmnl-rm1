@@ -4,7 +4,7 @@ Updated for Phase 5 on 2026-09-14, based on merged Phase 3 commit `af5c8ec` in a
 
 ## Shape and entrypoints
 
-One Go module, `github.com/robinsandborg/rm1-trmnl`, declares Go 1.26 and depends on `golang.org/x/image v0.39.0` for BMP decoding. There are seven Go packages: executable `cmd/trmnl-rm1`, CLI/cycle composition in `internal/trmnl`, protocol module `internal/byos`, image preparation/rendering in `internal/display`, paths/file I/O in `internal/storage`, wireless connectivity/identity in `internal/network`, and runtime mode/battery/scheduling/suspend in `internal/power`. Dependencies flow from the executable to `trmnl`, then to `byos`, `display`, `storage`, `network`, and `power`. No extracted package imports `trmnl`; BYOS uses only the standard library, while display also uses the BMP decoder. There is no Makefile. [GitHub Actions checks](../.github/workflows/checks.yml) run macOS/Linux tests and vet plus ARMv7 executable/test compilation.
+One Go module, `github.com/robinsandborg/rm1-trmnl`, declares Go 1.26 and depends on `golang.org/x/image v0.39.0` for BMP decoding. There are eight Go packages: executable `cmd/trmnl-rm1`, CLI/cycle composition in `internal/trmnl`, protocol module `internal/byos`, image preparation/rendering in `internal/display`, paths/file I/O in `internal/storage`, wireless connectivity/identity in `internal/network`, runtime mode/battery/scheduling/suspend in `internal/power`, and installation/restoration in `internal/appliance`. Dependencies flow from the executable to `trmnl`, then to `byos`, `display`, `storage`, `network`, `power`, and `appliance`. No extracted package imports `trmnl`; BYOS uses only the standard library, while display also uses the BMP decoder. There is no Makefile. [GitHub Actions checks](../.github/workflows/checks.yml) run macOS/Linux tests and vet plus ARMv7 executable/test compilation.
 
 | Entrypoint | Implementation and effects |
 | --- | --- |
@@ -128,3 +128,5 @@ Phase 4 storage code and evidence: [file operations](../internal/storage/files.g
 Phase 5: `network.Prepare` owns acquisition/cleanup, using supplied operations; Linux link controls accept the command runner and device identity accepts a sysfs root for tests. The facade retains config defaults and the cycle call site. See [validation](phase-5-validation.md).
 
 Phase 6: the power facade maps effective options and legacy battery/mode types. Linux runtime observations and scheduling expose the existing test dependencies. See [validation](phase-6-validation.md).
+
+Phase 7: [`appliance/install.go`](../internal/appliance/install.go) owns installation sequencing and templates; [`appliance/restore.go`](../internal/appliance/restore.go) owns restoration. The facade loads/validates config and maps the three stock-service snapshot fields into the retained state DTO. See [validation](phase-7-validation.md).
