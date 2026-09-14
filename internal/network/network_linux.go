@@ -1,6 +1,6 @@
 //go:build linux
 
-package trmnl
+package network
 
 import (
 	"context"
@@ -10,31 +10,31 @@ import (
 	"time"
 )
 
-func bringWiFiUp(cfg Config) error {
+func BringUp(cfg Options, run func([]string) error) error {
 	if len(cfg.WiFiUpCommand) > 0 {
-		return runCommand(cfg.WiFiUpCommand)
+		return run(cfg.WiFiUpCommand)
 	}
-	iface := cfg.wifiInterface()
-	return firstSuccessful(
+	iface := cfg.Interface
+	return firstSuccessful(run,
 		[]string{"ip", "link", "set", iface, "up"},
 		[]string{"ifconfig", iface, "up"},
 		[]string{"ifup", iface},
 	)
 }
 
-func bringWiFiDown(cfg Config) error {
+func BringDown(cfg Options, run func([]string) error) error {
 	if len(cfg.WiFiDownCommand) > 0 {
-		return runCommand(cfg.WiFiDownCommand)
+		return run(cfg.WiFiDownCommand)
 	}
-	iface := cfg.wifiInterface()
-	return firstSuccessful(
+	iface := cfg.Interface
+	return firstSuccessful(run,
 		[]string{"ip", "link", "set", iface, "down"},
 		[]string{"ifconfig", iface, "down"},
 		[]string{"ifdown", iface},
 	)
 }
 
-func waitForConnectivity(ctx context.Context, cfg Config) error {
+func Wait(ctx context.Context, cfg Options) error {
 	checkURL := cfg.ConnectivityCheckURL
 	if checkURL == "" {
 		checkURL = cfg.BaseURL
