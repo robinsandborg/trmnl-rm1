@@ -3,12 +3,11 @@ package trmnl
 import (
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/robinsandborg/rm1-trmnl/internal/storage"
 	"io"
 	"net/http"
-	"os"
 	"time"
 )
 
@@ -315,18 +314,7 @@ func (a *App) finishCycle(paths Paths, cfg Config, state State, entry CycleLog, 
 }
 
 func appendCycleLog(paths Paths, entry CycleLog) error {
-	f, err := os.OpenFile(paths.LogFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	data, err := json.Marshal(entry)
-	if err != nil {
-		return err
-	}
-	_, err = f.Write(append(data, '\n'))
-	return err
+	return storage.AppendJSON(paths.LogFile, entry)
 }
 
 func classifyCycleError(category string, err error) *cycleError {

@@ -1,6 +1,6 @@
 # Technical debt
 
-Inventory updated for Phase 3, 2026-09-14. The [architecture map](architecture.md) now describes merged Phase 2 baseline `54f2fdd` plus the display extraction. Phase 0 observations about uncommitted Wi-Fi SDIO and stock-noise work are called out below; they are excluded from this PR. Priorities below are local sequencing judgments, not GitHub triage labels. Risks inferred from code are not claimed as reproduced device failures. Phase 1 adds characterization and documentation corrections; Phases 2 and 3 extract BYOS and display while preserving the runtime risks below.
+Inventory updated for Phase 4, 2026-09-14. The [architecture map](architecture.md) now describes merged Phase 2 baseline `54f2fdd` plus the display extraction. Phase 0 observations about uncommitted Wi-Fi SDIO and stock-noise work are called out below; they are excluded from this PR. Priorities below are local sequencing judgments, not GitHub triage labels. Risks inferred from code are not claimed as reproduced device failures. Phase 1 adds characterization and documentation corrections; Phases 2 and 3 extract BYOS and display while preserving the runtime risks below.
 
 ## TD-01 — Cycle behavior lacks characterization
 
@@ -57,3 +57,7 @@ Body/pixel limits, command cancellation, and log retention would change accepted
 ## Proposed order and verification limits
 
 Follow [the strangler plan](refactoring-plan.md): establish behavioral evidence, extract leaf modules, then move orchestration and retire forwarding code. This inventory is not an instruction to fix every item in one PR. Phase 3 verifies host and Linux suites/vet, compiles the executable and all package tests for ARMv7, and compares display pixels and facade/cycle tests against pre-extraction code. Physical-device behavior remains unverified and is deferred until the completed refactor as authorized; see [validation evidence](phase-3-validation.md).
+
+## Phase 4 status
+
+Storage file layout and I/O are extracted behind the existing DTOs and defaults. State/log golden fixtures, missing/malformed JSON, cache bytes, modes, and encode/open failure ordering are covered. TD-03 durability, locking, and metadata lifecycle behavior remain unchanged. See [Phase 4 validation](phase-4-validation.md).

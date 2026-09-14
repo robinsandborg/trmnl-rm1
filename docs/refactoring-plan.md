@@ -1,6 +1,6 @@
 # Incremental refactoring plan
 
-**Status: Phases 1 and 2 merged; Phase 3 approved on 2026-09-14.** The user authorized merging the completed phase and proceeding to the next phase, with discretion to defer device verification until the refactor is complete. [Phase 1 PR #4](https://github.com/robinsandborg/trmnl-rm1/pull/4) merged as `dba4fb7`; [Phase 2 PR #5](https://github.com/robinsandborg/trmnl-rm1/pull/5) merged as `54f2fdd`. Phase 3 starts at `54f2fdd` on an isolated branch. [Phase 1 evidence](phase-1-validation.md), [Phase 2 evidence](phase-2-validation.md), and [Phase 3 evidence](phase-3-validation.md) record implementation checks. Later implementation phases retain their approval gates.
+**Status: Phases 1–3 merged; all remaining extraction phases authorized on 2026-09-14.** The user requested that each phase be implemented, checked, reviewed, and merged without further phase approval prompts, followed by comprehensive RM1 tests and fixes. After the foundation is verified and pushed, delegate each open repository issue into its own PR and review every PR. Optional Phase 8 fixes will be selected from concrete test/recovery findings, with migration and rollback notes, rather than changing unrelated behavior during extraction.
 
 Phase 1 is isolated from the shared checkout's uncommitted Wi-Fi SDIO/stock-noise changes and starts at committed `2a86333`. Their integration must retain and extend the baseline (including interface enumeration before MAC fallback); those unrelated changes are not imported here.
 
@@ -46,12 +46,12 @@ Tests should exercise the same interface as callers, with fixture HTTP responses
 2. Implement the entire approved phase. Keep edits and tests focused on its paths; do not batch unrelated debt fixes.
 3. Run green tests for all touched behavior and affected callers. Run host tests/vet, Linux tests/vet for Linux-dependent changes, and ARMv7 compilation. Use [the command map](architecture.md#build-and-test-commands). Per the user's 2026-09-14 instruction, device verification may wait until the refactor is complete. Keep automated checks green per phase, track device evidence as pending, and perform final RM1 verification before declaring the whole refactor verified.
 4. Self-review the final diff for behavior, API/data compatibility, effect ordering, failure/recovery behavior, and phase scope. Fix findings and rerun affected checks. Update the map, debt statuses, and relevant runbook sections.
-5. Open a PR with a short **why**, concrete resulting behavior, checks and results, migration note when applicable, and rollback notes. Do not stop at a draft implementation; opening the PR completes delivery of the approved phase. Opening does not authorize merge or deployment.
+5. Open a PR with a short **why**, concrete resulting behavior, checks and results, migration note when applicable, and rollback notes. Do not stop at a draft implementation; opening the PR completes delivery of the approved phase. The user has authorized merging green, reviewed phase PRs and final device deployment.
 
 For pure package extraction, rollback is reverting the phase PR or restoring the prior binary while retaining compatible state/config. Before a device rollout, retain the previous binary, configuration, state (including restore metadata), and any changed unit/hook files; quiesce appliance and both A/B timer/service paths while swapping versions. Never delete state as a generic rollback. Changes that alter persistent data or installed artifacts must supply a more specific tested reversal.
 
 Done means tests pass, behavior is matched or explicitly migrated, documentation is current, self-review is resolved, and the approved phase's PR is open. Load only documentation relevant to the current work; `AGENTS.md` remains a thin table of contents.
 
-## Next approval gate
+## Remaining delivery
 
-After Phase 3's tests, self-review, and PR are complete, stop before Phase 4 — Storage package. Device verification is deferred until the completed refactor under the user's 2026-09-14 instruction; it is still outstanding.
+Proceed through Phases 4–7 and 9 with separate reviewed, green PRs. Address concrete recovery findings separately under Phase 8. Then verify the complete software on RM1, resolve findings, and push/merge the final changes before delegating repository issues. Automated checks remain required for every phase.

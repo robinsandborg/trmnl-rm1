@@ -2,6 +2,7 @@ package trmnl
 
 import (
 	"context"
+	"github.com/robinsandborg/rm1-trmnl/internal/storage"
 	"net/http"
 	"os"
 	"time"
@@ -30,7 +31,7 @@ func defaultCycleDeps(prepare func(Config) (*http.Client, func(), error)) cycleD
 		renderImage:          renderImage,
 		planNextCycle:        planNextCycle,
 		suspendDevice:        suspendDevice,
-		writeFile:            os.WriteFile,
+		writeFile:            storage.WriteFile,
 		appendCycleLog:       appendCycleLog,
 		saveState:            saveState,
 	}
