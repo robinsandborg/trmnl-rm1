@@ -1,10 +1,10 @@
 # Technical debt
 
-Inventory updated for Phase 1, 2026-09-14. The [architecture map](architecture.md) now describes committed baseline `2a86333` plus the Phase 1 seams. Phase 0 observations about uncommitted Wi-Fi SDIO and stock-noise work are called out below; they are excluded from this PR. Priorities below are local sequencing judgments, not GitHub triage labels. Risks inferred from code are not claimed as reproduced device failures. Phase 1 adds characterization and documentation corrections; the runtime risks below remain unchanged.
+Inventory updated for Phase 2, 2026-09-14. The [architecture map](architecture.md) now describes merged Phase 1 baseline `dba4fb7` plus the BYOS extraction. Phase 0 observations about uncommitted Wi-Fi SDIO and stock-noise work are called out below; they are excluded from this PR. Priorities below are local sequencing judgments, not GitHub triage labels. Risks inferred from code are not claimed as reproduced device failures. Phase 1 adds characterization and documentation corrections; Phase 2 extracts BYOS while preserving the runtime risks below.
 
 ## TD-01 — Cycle behavior lacks characterization
 
-**Phase 1 baseline established; extend per extraction.** [`app.go`](../internal/trmnl/app.go) combines command dispatch, network setup, two HTTP requests, render policy, persistence, scheduling, cleanup, and failure handling in one file. `App` now owns private effect dependencies. Cycle tests exercise `App.Run` with real configuration, state/cache/log I/O and BYOS decoding, checking ordered effects and failure outcomes; [fixtures and coverage](phase-1-validation.md) define the extraction baseline.
+**Phase 1 baseline established; extend per extraction.** [`app.go`](../internal/trmnl/app.go) combines command dispatch, network setup, render policy, persistence, scheduling, cleanup, and failure handling. Phase 2 moves both HTTP requests, URL resolution, and interval clamping to [`internal/byos`](../internal/byos/fetch.go) behind the existing facade. `App` now owns private effect dependencies. Cycle tests exercise `App.Run` with real configuration, state/cache/log I/O and BYOS decoding, checking ordered effects and failure outcomes; [fixtures and coverage](phase-1-validation.md) define the extraction baseline.
 
 The difficult contract is effect ordering: state/log writes before suspend, cleanup on failures, counters after a successful render followed by scheduling failure, and fallback errors. The uncommitted SDIO work observed in Phase 0 additionally needs enumeration-before-validation characterization when it is integrated. A refactor could silently change recoverability. Use the captured outputs and effect traces when migrating callers one seam at a time. Preserve current quirks unless separately approved with a migration note.
 
@@ -44,16 +44,16 @@ The rollback procedure retains the previous binary and compatible configuration/
 
 ## TD-07 — Configuration contracts are implicit
 
-**Medium.** [`types.go`](../internal/trmnl/types.go) mixes wire structures, installation state, defaults, and policy helpers. Effective accessors replace nonpositive values with defaults; several validation checks therefore cannot reject raw nonpositive input. Rotation zero also selects the default. Nested and top-level full-refresh fields coexist; `framebuffer_device` is reserved but unused. Linux and non-Linux configured device-ID trimming differ.
+**Medium; BYOS mapping characterized in Phase 2.** [`types.go`](../internal/trmnl/types.go) mixes wire structures, installation state, defaults, and policy helpers. Effective accessors replace nonpositive values with defaults; several validation checks therefore cannot reject raw nonpositive input. Rotation zero also selects the default. Nested and top-level full-refresh fields coexist; `framebuffer_device` is reserved but unused. Linux and non-Linux configured device-ID trimming differ.
 
 Characterize omitted/zero/negative fields, nested precedence, unknown JSON fields, and platform differences. Preserve public Go surfaces and serialized forms during package moves using legacy wrappers and explicit narrow mappings. Changing accepted inputs or precedence is a compatibility change, not incidental cleanup.
 
 ## TD-08 — Resource limits and command cancellation are absent
 
-**Medium; evaluate separately from structural work.** [`fetchCyclePayload`](../internal/trmnl/app.go) uses unbounded `io.ReadAll` for images; decoding/scaling can allocate according to input dimensions. HTTP requests have timeouts, but [`system.go`](../internal/trmnl/system.go) uses `exec.Command` without a deadline. Cycle logs append indefinitely. On a constrained appliance, large inputs, a stuck command, or growing logs could exhaust resources or prevent a cycle from finishing.
+**Medium; evaluate separately from structural work.** [`byos.Fetch`](../internal/byos/fetch.go) retains unbounded `io.ReadAll` for images; decoding/scaling can allocate according to input dimensions. HTTP requests have timeouts, but [`system.go`](../internal/trmnl/system.go) uses `exec.Command` without a deadline. Cycle logs append indefinitely. On a constrained appliance, large inputs, a stuck command, or growing logs could exhaust resources or prevent a cycle from finishing.
 
 Body/pixel limits, command cancellation, and log retention would change accepted input or runtime behavior. Define limits and failure semantics in a separately approved change, with representative payloads and rollback notes.
 
 ## Proposed order and verification limits
 
-Follow [the strangler plan](refactoring-plan.md): establish behavioral evidence, extract leaf modules, then move orchestration and retire forwarding code. This inventory is not an instruction to fix every item in one PR. Phase 1 verifies host and Linux suites/vet plus ARM compilation. Physical-device behavior remains unverified; see [validation evidence](phase-1-validation.md).
+Follow [the strangler plan](refactoring-plan.md): establish behavioral evidence, extract leaf modules, then move orchestration and retire forwarding code. This inventory is not an instruction to fix every item in one PR. Phase 2 verifies host and Linux suites/vet, compiles all package tests for ARMv7, and compares the facade/cycle corpus against pre-extraction code. Physical-device behavior remains unverified and is deferred until the completed refactor as authorized; see [validation evidence](phase-2-validation.md).

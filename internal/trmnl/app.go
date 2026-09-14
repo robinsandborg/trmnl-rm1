@@ -8,9 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -314,86 +312,6 @@ func (a *App) finishCycle(paths Paths, cfg Config, state State, entry CycleLog, 
 		_, _ = a.cycle.planNextCycle(cfg, cfg.refreshFallback(), runtimeMode)
 	}
 	return err
-}
-
-func fetchCyclePayload(client *http.Client, cfg Config) (TerminalResponse, []byte, string, time.Duration, error) {
-	deviceID, err := resolveDeviceID(cfg)
-	if err != nil {
-		return TerminalResponse{}, nil, "", 0, err
-	}
-
-	apiURL := strings.TrimRight(cfg.BaseURL, "/") + "/api/display"
-	req, err := http.NewRequest(http.MethodGet, apiURL, nil)
-	if err != nil {
-		return TerminalResponse{}, nil, "", 0, err
-	}
-	req.Header.Set("ID", deviceID)
-	if cfg.AccessToken != "" {
-		req.Header.Set("access-token", cfg.AccessToken)
-	}
-	req.Header.Set("User-Agent", "trmnl-rm1/0.1.0")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return TerminalResponse{}, nil, "", 0, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return TerminalResponse{}, nil, "", 0, fmt.Errorf("display endpoint returned %s", resp.Status)
-	}
-
-	var terminal TerminalResponse
-	if err := json.NewDecoder(resp.Body).Decode(&terminal); err != nil {
-		return TerminalResponse{}, nil, "", 0, fmt.Errorf("parse display response: %w", err)
-	}
-
-	if terminal.ImageURL == "" {
-		return TerminalResponse{}, nil, "", 0, errors.New("display response missing image_url")
-	}
-
-	imageURL := terminal.ImageURL
-	if !strings.HasPrefix(imageURL, "http://") && !strings.HasPrefix(imageURL, "https://") {
-		base, err := url.Parse(cfg.BaseURL)
-		if err != nil {
-			return TerminalResponse{}, nil, "", 0, err
-		}
-		ref, err := url.Parse(imageURL)
-		if err != nil {
-			return TerminalResponse{}, nil, "", 0, err
-		}
-		imageURL = base.ResolveReference(ref).String()
-	}
-
-	imgResp, err := client.Get(imageURL)
-	if err != nil {
-		return TerminalResponse{}, nil, "", 0, fmt.Errorf("download image: %w", err)
-	}
-	defer imgResp.Body.Close()
-	if imgResp.StatusCode != http.StatusOK {
-		return TerminalResponse{}, nil, "", 0, fmt.Errorf("image download returned %s", imgResp.Status)
-	}
-	imageBytes, err := io.ReadAll(imgResp.Body)
-	if err != nil {
-		return TerminalResponse{}, nil, "", 0, err
-	}
-
-	interval := clampRefresh(terminal.RefreshRate, cfg)
-	return terminal, imageBytes, imageURL, interval, nil
-}
-
-func clampRefresh(refreshRate int, cfg Config) time.Duration {
-	interval := cfg.refreshFallback()
-	if refreshRate > 0 {
-		interval = time.Duration(refreshRate) * time.Second
-	}
-	if interval < cfg.refreshMin() {
-		interval = cfg.refreshMin()
-	}
-	if interval > cfg.refreshMax() {
-		interval = cfg.refreshMax()
-	}
-	return interval
 }
 
 func appendCycleLog(paths Paths, entry CycleLog) error {

@@ -1,6 +1,6 @@
 # Incremental refactoring plan
 
-**Status: Phase 1 approved on 2026-09-14.** This approval covers only Phase 1 through implementation, tests, self-review, and opening a PR. Later phases, merge, and deployment remain unapproved. [Phase 1 evidence](phase-1-validation.md) records the implementation and completed checks.
+**Status: Phase 1 merged; Phase 2 approved on 2026-09-14.** The user authorized merging [Phase 1 PR #4](https://github.com/robinsandborg/trmnl-rm1/pull/4) and proceeding to the next phase, with discretion to defer device verification until the refactor is complete. Phase 1 merged as `dba4fb7`; Phase 2 starts there on an isolated branch. [Phase 1 evidence](phase-1-validation.md) and [Phase 2 evidence](phase-2-validation.md) record implementation checks. Later implementation phases retain their approval gates.
 
 Phase 1 is isolated from the shared checkout's uncommitted Wi-Fi SDIO/stock-noise changes and starts at committed `2a86333`. Their integration must retain and extend the baseline (including interface enumeration before MAC fallback); those unrelated changes are not imported here.
 
@@ -44,7 +44,7 @@ Tests should exercise the same interface as callers, with fixture HTTP responses
 
 1. Recheck the working tree and approved scope. Isolate the PR from pre-existing Wi-Fi/install/skill work; Phase 0 does not own those changes. Use a `codex/` branch for implementation and a clean checkout/worktree if needed.
 2. Implement the entire approved phase. Keep edits and tests focused on its paths; do not batch unrelated debt fixes.
-3. Run green tests for all touched behavior and affected callers. Run host tests/vet, Linux tests/vet for Linux-dependent changes, and ARMv7 compilation. Use [the command map](architecture.md#build-and-test-commands). Hardware-dependent changes require recorded device evidence before device rollout; missing evidence is an explicit limitation.
+3. Run green tests for all touched behavior and affected callers. Run host tests/vet, Linux tests/vet for Linux-dependent changes, and ARMv7 compilation. Use [the command map](architecture.md#build-and-test-commands). Per the user's 2026-09-14 instruction, device verification may wait until the refactor is complete. Keep automated checks green per phase, track device evidence as pending, and perform final RM1 verification before declaring the whole refactor verified.
 4. Self-review the final diff for behavior, API/data compatibility, effect ordering, failure/recovery behavior, and phase scope. Fix findings and rerun affected checks. Update the map, debt statuses, and relevant runbook sections.
 5. Open a PR with a short **why**, concrete resulting behavior, checks and results, migration note when applicable, and rollback notes. Do not stop at a draft implementation; opening the PR completes delivery of the approved phase. Opening does not authorize merge or deployment.
 
@@ -54,4 +54,4 @@ Done means tests pass, behavior is matched or explicitly migrated, documentation
 
 ## Next approval gate
 
-After Phase 1's tests, self-review, and PR are complete, stop. Phase 2 — BYOS package requires separate approval. No device deployment is part of Phase 1.
+After Phase 2's tests, self-review, and PR are complete, stop before Phase 3 — Display package. Device verification is deferred until the completed refactor under the user's 2026-09-14 instruction; it is still outstanding.
