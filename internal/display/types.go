@@ -7,6 +7,7 @@ type Options struct {
 	Height          int
 	Rotation        int
 	SkipRotation    bool
+	RawRotation     bool
 	RendererCommand []string
 	FBInkBinary     string
 	FBDepthBinary   string

@@ -150,3 +150,7 @@ Phase 9: [cycle extraction evidence](phase-9-validation.md). All earlier golden 
 ## Deployed RM1 compatibility
 
 [`network/radio_linux.go`](../internal/network/radio_linux.go) supplies bounded SDIO enumeration and radio/supplicant lifecycle operations on brcmfmac-equipped devices. CLI identity validation and cycle/install entrypoints enumerate before reading the wireless MAC. Stock restore brings networking back before starting the UI. The facade and cycle retain the deployed optional `masked_noise` restore map; appliance install/restore preserves and reapplies those known service settings. See [device validation and migration notes](device-validation.md).
+
+## Issue #3 recovery extension
+
+[Recovery and battery operation](recovery-and-battery.md) describes the new behavior and migration. The installed service and awake timers dispatch `run-scheduled`; `run-once` remains explicit immediate execution. Both take a process lock, and scheduled runs honor durable deadlines. A non-waking safety timer targets the existing appliance service. `cycle/recovery.go` owns local status, battery decisions and bounded failure scheduling; `power/battery.go` owns validated hysteresis policy. `display/status.go` creates offline-capable images. `storage/files.go` performs atomic durable replacement and recoverable JSON loading; the facade maps independent installation metadata back into the compatible runtime DTO.

@@ -127,9 +127,10 @@ func TransientWithRunner(run func([]string) error, exePath, selfUnit string, int
 		"--unit=" + target,
 		"--on-active=" + strconv.Itoa(seconds),
 		"--property=Type=oneshot",
+		"--property=TimeoutStartSec=5min",
 		"--property=Environment=HOME=/home/root",
 		exePath,
-		"run-once",
+		"run-scheduled",
 	})
 }
 

@@ -50,7 +50,19 @@ func (a *App) Run(args []string) error {
 		return a.runValidate(paths)
 	case "print-device-id":
 		return a.runPrintDeviceID(paths)
-	case "run-once":
+	case "run-once", "run-scheduled":
+		unlock, acquired, err := cycleLock(paths)
+		if err != nil {
+			return err
+		}
+		if !acquired {
+			fmt.Fprintln(a.stderr, "cycle already running; recovery timer retains ownership")
+			return nil
+		}
+		defer unlock()
+		if args[0] == "run-scheduled" {
+			return a.runScheduled(paths)
+		}
 		return a.runOnce(paths)
 	case "install-appliance":
 		return a.runInstall(paths, args[1:])
@@ -99,23 +111,24 @@ func (a *App) runPrintDeviceID(paths Paths) error {
 func (a *App) runOnce(paths Paths) error {
 	cfg, err := loadConfig(paths)
 	if err != nil {
-		return err
+		return fmt.Errorf("configuration: safety timer retries in at most 5 minutes: %w", err)
 	}
-	// The deployed appliance unbinds SDIO between cycles. Re-enumerate before
-	// validation tries the wireless MAC fallback. Keep this effect injectable.
-	if a.cycle.ensureInterface != nil {
-		a.cycle.ensureInterface(cfg)
+	// Identity is resolved after network acquisition. Local battery/recovery
+	// rendering must never enumerate or leave the radio powered up.
+	validationConfig := cfg
+	if strings.TrimSpace(validationConfig.DeviceID) == "" {
+		validationConfig.DeviceID = "deferred-wireless-identity"
 	}
-	if err := validateConfig(paths, cfg); err != nil {
-		return err
+	if err := validateConfig(paths, validationConfig); err != nil {
+		return fmt.Errorf("configuration: safety timer retries in at most 5 minutes: %w", err)
 	}
 
 	state, err := loadState(paths)
 	if err != nil {
-		return err
+		return fmt.Errorf("state: safety timer will retry: %w", err)
 	}
 
-	return cycle.Run(cycle.Options{DownloadedImage: paths.DownloadedImage, LastRenderedImage: paths.LastRenderedImage, FullRefreshEvery: cfg.fullRefreshEvery(), FailureThreshold: cfg.failureThreshold(), RefreshFallback: cfg.refreshFallback()}, cycle.State(state), a.cycleOperations(paths, cfg))
+	return cycle.Run(a.cycleOptions(paths, cfg), cycle.State(state), a.cycleOperations(paths, cfg))
 }
 
 func (a *App) prepareNetwork(cfg Config) (*http.Client, func(), error) {

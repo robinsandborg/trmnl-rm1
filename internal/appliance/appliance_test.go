@@ -12,7 +12,7 @@ import (
 func TestRestoreRemovalErrorText(t *testing.T) {
 	fail := errors.New("denied")
 	err := appliance.Restore(appliance.Snapshot{}, appliance.RestoreOps{Run: func([]string) error { return nil }, Remove: func(string) error { return fail }, SleepHookDir: func() (string, error) { return "/sleep", nil }})
-	want := "remove appliance unit file /etc/systemd/system/trmnl-rm1-appliance.service: denied\nremove appliance resume hook /sleep/trmnl-rm1-resume: denied"
+	want := "remove appliance recovery timer /etc/systemd/system/trmnl-rm1-recovery.timer: denied\nremove appliance unit file /etc/systemd/system/trmnl-rm1-appliance.service: denied\nremove appliance resume hook /sleep/trmnl-rm1-resume: denied"
 	if err == nil || err.Error() != want || !errors.Is(err, fail) {
 		t.Fatalf("%v", err)
 	}
@@ -43,7 +43,7 @@ func TestInstallStopsAtFailedWrite(t *testing.T) {
 		Executable: func() (string, error) { return "/bin/client", nil }, SleepHookDir: func() (string, error) { return "/sleep", nil },
 		WriteFile: func(path string, data []byte, mode os.FileMode) error {
 			paths = append(paths, path)
-			if !strings.Contains(string(data), "ExecStart=/bin/client run-once") || mode != 0o644 {
+			if !strings.Contains(string(data), "ExecStart=/bin/client run-scheduled") || mode != 0o644 {
 				t.Fatal("unit changed")
 			}
 			return fail
@@ -103,8 +103,27 @@ func TestRestoreRecoversNetworkingBeforeStockUI(t *testing.T) {
 	if !errors.Is(err, fail) || err.Error() != "restore wireless networking: radio failed" {
 		t.Fatal(err)
 	}
-	want := []string{"systemctl disable --now trmnl-rm1-appliance.service", "systemctl daemon-reload", "network", "systemctl unmask xochitl.service", "systemctl enable --now xochitl.service"}
+	want := []string{"systemctl disable --now trmnl-rm1-recovery.timer", "systemctl stop trmnl-rm1-next-a.timer", "systemctl stop trmnl-rm1-next-a.service", "systemctl stop trmnl-rm1-next-b.timer", "systemctl stop trmnl-rm1-next-b.service", "systemctl disable --now trmnl-rm1-appliance.service", "systemctl daemon-reload", "network", "systemctl unmask xochitl.service", "systemctl enable --now xochitl.service"}
 	if !reflect.DeepEqual(trace, want) {
 		t.Fatalf("%v", trace)
+	}
+}
+
+func TestRestoreReportsFailedTimerStopButToleratesAbsentLegacyUnits(t *testing.T) {
+	fail := errors.New("permission denied")
+	err := appliance.Restore(appliance.Snapshot{}, appliance.RestoreOps{
+		Run: func(argv []string) error {
+			if argv[len(argv)-1] == "trmnl-rm1-next-a.timer" {
+				return fail
+			}
+			if argv[len(argv)-1] == "trmnl-rm1-next-b.timer" {
+				return errors.New("Unit not loaded")
+			}
+			return nil
+		},
+		Remove: func(string) error { return nil }, SleepHookDir: func() (string, error) { return "/sleep", nil },
+	})
+	if !errors.Is(err, fail) || strings.Contains(err.Error(), "not loaded") {
+		t.Fatal(err)
 	}
 }

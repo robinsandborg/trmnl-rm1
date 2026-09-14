@@ -114,6 +114,8 @@ func TestRunRestoreWithOpsAggregatesCleanupAndCommandFailures(t *testing.T) {
 	}
 
 	wantRunCalls := []string{
+		"systemctl disable --now trmnl-rm1-recovery.timer",
+		"systemctl stop trmnl-rm1-next-a.timer", "systemctl stop trmnl-rm1-next-a.service", "systemctl stop trmnl-rm1-next-b.timer", "systemctl stop trmnl-rm1-next-b.service",
 		"systemctl disable --now " + applianceServiceName,
 		"systemctl daemon-reload",
 		"systemctl unmask xochitl.service",
@@ -126,6 +128,7 @@ func TestRunRestoreWithOpsAggregatesCleanupAndCommandFailures(t *testing.T) {
 	}
 
 	wantRemoved := []string{
+		"/etc/systemd/system/trmnl-rm1-recovery.timer",
 		applianceServicePath,
 		filepath.Join("/system-sleep", applianceResumeHookName),
 	}
@@ -159,6 +162,8 @@ func TestRunRestoreWithOpsIgnoresMissingFilesAndRespectsSyncState(t *testing.T) 
 	}
 
 	wantRunCalls := []string{
+		"systemctl disable --now trmnl-rm1-recovery.timer",
+		"systemctl stop trmnl-rm1-next-a.timer", "systemctl stop trmnl-rm1-next-a.service", "systemctl stop trmnl-rm1-next-b.timer", "systemctl stop trmnl-rm1-next-b.service",
 		"systemctl disable --now " + applianceServiceName,
 		"systemctl daemon-reload",
 		"systemctl unmask xochitl.service",
@@ -170,6 +175,7 @@ func TestRunRestoreWithOpsIgnoresMissingFilesAndRespectsSyncState(t *testing.T) 
 	}
 
 	wantRemoved := []string{
+		"/etc/systemd/system/trmnl-rm1-recovery.timer",
 		applianceServicePath,
 		filepath.Join("/system-sleep", applianceResumeHookName),
 	}
@@ -202,6 +208,8 @@ func TestRunRestoreWithOpsReportsSleepHookLookupFailure(t *testing.T) {
 	}
 
 	wantRunCalls := []string{
+		"systemctl disable --now trmnl-rm1-recovery.timer",
+		"systemctl stop trmnl-rm1-next-a.timer", "systemctl stop trmnl-rm1-next-a.service", "systemctl stop trmnl-rm1-next-b.timer", "systemctl stop trmnl-rm1-next-b.service",
 		"systemctl disable --now " + applianceServiceName,
 		"systemctl daemon-reload",
 		"systemctl unmask xochitl.service",

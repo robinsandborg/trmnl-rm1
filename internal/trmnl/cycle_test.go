@@ -446,7 +446,6 @@ func TestCycleEarlyFailuresBypassFinalization(t *testing.T) {
 		{"config validation", "", func(h *cycleHarness) {
 			writeTestFile(h.t, h.paths.ConfigFile, []byte(`{"base_url":":bad","device_id":"explicit"}`))
 		}},
-		{"state parse", "", func(h *cycleHarness) { writeTestFile(h.t, h.paths.StateFile, []byte("{")) }},
 		{"runtime observation", "battery mode:2", func(h *cycleHarness) { h.fail["mode:2"] = errors.New("mode failed") }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

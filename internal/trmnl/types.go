@@ -30,6 +30,12 @@ const (
 )
 
 type Config struct {
+	BatteryLowPercent         int    `json:"battery_low_percent,omitempty"`
+	BatteryRecoveryPercent    int    `json:"battery_recovery_percent,omitempty"`
+	BatteryCriticalPercent    int    `json:"battery_critical_percent,omitempty"`
+	BatteryCheckSeconds       int    `json:"battery_check_seconds,omitempty"`
+	CriticalBatteryShutdown   bool   `json:"critical_battery_shutdown,omitempty"`
+	FBInkRawRotation          bool   `json:"fbink_raw_rotation,omitempty"`
 	BaseURL                   string `json:"base_url"`
 	DeviceID                  string `json:"device_id,omitempty"`
 	AccessToken               string `json:"access_token,omitempty"`
@@ -72,6 +78,10 @@ type DisplayPower struct {
 }
 
 type State struct {
+	BootID              string          `json:"boot_id,omitempty"`
+	LocalScreen         string          `json:"local_screen,omitempty"`
+	BatteryLow          bool            `json:"battery_low,omitempty"`
+	NextAttemptAt       time.Time       `json:"next_attempt_at,omitzero"`
 	MaskedNoise         map[string]bool `json:"masked_noise,omitempty"`
 	LastImageHash       string          `json:"last_image_hash,omitempty"`
 	LastImageURL        string          `json:"last_image_url,omitempty"`

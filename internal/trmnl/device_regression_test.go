@@ -37,6 +37,12 @@ func TestDeployedRestoreMetadataSurvivesStateRoundTrip(t *testing.T) {
 
 func TestCyclePreservesDeployedRestoreMetadata(t *testing.T) {
 	h := newCycleHarness(t)
+	// Simulate a deployed legacy file before its first metadata migration.
+	for _, path := range []string{installationPath(h.paths), installationPath(h.paths) + ".bak"} {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+	}
 	h.before.MaskedNoise = map[string]bool{"chronyd.service": true, "memfaultd.service": false}
 	h.seed()
 	if err := h.run(); err != nil {
@@ -47,14 +53,14 @@ func TestCyclePreservesDeployedRestoreMetadata(t *testing.T) {
 	}
 }
 
-func TestInterfaceEnumerationPrecedesValidation(t *testing.T) {
+func TestInvalidConfigurationDoesNotEnumerateRadio(t *testing.T) {
 	p := isolatedPaths(t)
 	writeTestFile(t, p.ConfigFile, []byte(`{"base_url":":invalid","device_id":"explicit"}`))
 	app := NewApp(io.Discard, io.Discard)
 	called := false
 	app.cycle.ensureInterface = func(Config) { called = true }
 	err := app.Run([]string{"run-once"})
-	if !called || err == nil || !strings.Contains(err.Error(), "base_url must be a valid absolute URL") {
+	if called || err == nil || !strings.Contains(err.Error(), "base_url must be a valid absolute URL") {
 		t.Fatalf("ensure=%v error=%v", called, err)
 	}
 }

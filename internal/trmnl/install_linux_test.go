@@ -22,6 +22,8 @@ func TestInstallPersistsBeforeFirstCycle(t *testing.T) {
 			deps := installDeps{
 				writeFile: func(path string, data []byte, mode os.FileMode) error {
 					switch path {
+					case "/etc/systemd/system/trmnl-rm1-recovery.timer":
+						trace = append(trace, "write timer")
 					case applianceServicePath:
 						if mode != 0o644 {
 							t.Fatal("service mode changed")
@@ -76,9 +78,12 @@ func TestInstallPersistsBeforeFirstCycle(t *testing.T) {
 			if failSave != errors.Is(err, saveErr) || (!failSave && err != nil) {
 				t.Fatalf("error=%v", err)
 			}
-			want := []string{"write service", "write hook", "systemctl daemon-reload", "systemctl stop xochitl.service", "systemctl disable xochitl.service", "systemctl mask xochitl.service", "systemctl stop rm-sync.service", "systemctl disable rm-sync.service", "systemctl mask rm-sync.service", "systemctl enable trmnl-rm1-appliance.service", "save"}
+			want := []string{"write service", "write timer", "write hook", "save", "systemctl daemon-reload", "systemctl stop xochitl.service", "systemctl disable xochitl.service", "systemctl mask xochitl.service", "systemctl stop rm-sync.service", "systemctl disable rm-sync.service", "systemctl mask rm-sync.service", "systemctl enable trmnl-rm1-appliance.service"}
+			if failSave {
+				want = want[:4]
+			}
 			if !failSave {
-				want = append(want, "systemctl start trmnl-rm1-appliance.service")
+				want = append(want, "systemctl enable --now trmnl-rm1-recovery.timer", "systemctl start trmnl-rm1-appliance.service")
 			}
 			if !reflect.DeepEqual(trace, want) {
 				t.Fatalf("trace=%v, want %v", trace, want)
@@ -93,7 +98,7 @@ func TestInstallPersistsBeforeFirstCycle(t *testing.T) {
 			if hook != wantHook {
 				t.Fatalf("resume hook changed:\n%s", hook)
 			}
-			for _, line := range []string{"RequiresMountsFor=/home/root\n", "Type=oneshot\n", "Environment=HOME=/home/root\n", "ExecStart=/home/root/bin/trmnl-rm1 run-once\n", "User=root\n"} {
+			for _, line := range []string{"RequiresMountsFor=/home/root\n", "Type=oneshot\n", "Environment=HOME=/home/root\n", "ExecStart=/home/root/bin/trmnl-rm1 run-scheduled\n", "User=root\n"} {
 				if !strings.Contains(service, line) {
 					t.Fatalf("service missing %q", line)
 				}

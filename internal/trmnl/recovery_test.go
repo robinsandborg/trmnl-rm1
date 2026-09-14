@@ -1,0 +1,237 @@
+package trmnl
+
+import (
+	"bytes"
+	"errors"
+	"image"
+	_ "image/png"
+	"os"
+	"strings"
+	"testing"
+	"time"
+)
+
+func recoveryHarness(t *testing.T) *cycleHarness {
+	h := newCycleHarness(t)
+	h.app.cycle.bootID = func() string { return "boot-one" }
+	original := h.app.cycle.renderImage
+	h.app.cycle.renderImage = func(cfg Config, b []byte, p string, m RefreshMode) error {
+		if bytes.Equal(b, h.frame) {
+			return original(cfg, b, p, m)
+		}
+		if _, _, err := image.Decode(bytes.NewReader(b)); err != nil {
+			t.Fatal(err)
+		}
+		if m != RefreshFull {
+			t.Fatal("local status must fully refresh")
+		}
+		if err := h.event("local"); err != nil {
+			return err
+		}
+		return os.WriteFile(p, b, 0600)
+	}
+	return h
+}
+func TestRecoveryColdBootAndLocalScreenForceFullRedraw(t *testing.T) {
+	h := recoveryHarness(t)
+	h.before.LastImageHash = sha256Hex(h.frame)
+	h.seed()
+	if err := h.run(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(h.events, " "), "render:full") || h.state().BootID != "boot-one" {
+		t.Fatal(h.events)
+	}
+	h.events = nil
+	if err := h.run(); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.Join(h.events, " "), "render:") {
+		t.Fatal("unchanged same-boot update rendered")
+	}
+	state := h.state()
+	state.LocalScreen = "offline"
+	if err := saveState(h.paths, state); err != nil {
+		t.Fatal(err)
+	}
+	h.events = nil
+	if err := h.run(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(h.events, " "), "render:full") || h.state().LocalScreen != "" {
+		t.Fatal(h.events)
+	}
+}
+func TestRecoveryBeforeFirstNetworkSuccessShowsLocalScreenAndRetries(t *testing.T) {
+	for _, failure := range []string{"wifi-up", "connect", "mode:2", "cache", "save", "log:"} {
+		t.Run(failure, func(t *testing.T) {
+			h := recoveryHarness(t)
+			h.fail[failure] = errors.New("injected")
+			if err := h.run(); err == nil {
+				t.Fatal("expected error")
+			}
+			trace := strings.Join(h.events, " ")
+			if !strings.Contains(trace, "schedule:") {
+				t.Fatalf("no retry: %s", trace)
+			}
+			if !strings.Contains(trace, "suspend") {
+				t.Fatalf("discharging failure left awake: %s", trace)
+			}
+			if (failure == "wifi-up" || failure == "connect") && !strings.Contains(trace, "local") {
+				t.Fatal("boot offline status missing")
+			}
+		})
+	}
+}
+func TestLowBatteryNeverAcquiresRadioAndResumesAfterHysteresis(t *testing.T) {
+	h := recoveryHarness(t)
+	pct, status := "19", "Discharging"
+	h.app.cycle.readBatterySample = func(Config) (*BatterySample, error) { return &BatterySample{CapacityPct: pct, Status: status}, nil }
+	h.app.cycle.ensureInterface = func(Config) { t.Fatal("radio enumeration at low battery") }
+	if err := h.run(); err != nil {
+		t.Fatal(err)
+	}
+	if !h.state().BatteryLow || h.state().LocalScreen != "low-battery" {
+		t.Fatal(h.state())
+	}
+	if trace := strings.Join(h.events, " "); strings.Contains(trace, "wifi") || !strings.Contains(trace, "schedule:30m0s:low-battery") {
+		t.Fatal(trace)
+	}
+	h.events = nil
+	pct = "25"
+	if err := h.run(); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.Join(h.events, " "), "local") {
+		t.Fatal("warning redrawn within same boot")
+	}
+	h.events = nil
+	pct = "invalid"
+	if err := h.run(); err != nil {
+		t.Fatal(err)
+	}
+	if !h.state().BatteryLow {
+		t.Fatal("invalid sensor cleared battery protection")
+	}
+	h.events = nil
+	pct = "29"
+	status = "Charging"
+	if err := h.run(); err != nil {
+		t.Fatal(err)
+	}
+	if !h.state().BatteryLow || strings.Contains(strings.Join(h.events, " "), "wifi") {
+		t.Fatal("charging below threshold fetched")
+	}
+	h.events = nil
+	pct = "30"
+	if err := h.run(); err != nil {
+		t.Fatal(err)
+	}
+	if h.state().BatteryLow || !strings.Contains(strings.Join(h.events, " "), "render:full") {
+		t.Fatal("charging recovery did not replace warning")
+	}
+}
+func TestScheduledDeadlineAndLockPreventDuplicateCycle(t *testing.T) {
+	h := recoveryHarness(t)
+	if err := h.run(); err != nil {
+		t.Fatal(err)
+	}
+	h.events = nil
+	if err := h.app.Run([]string{"run-scheduled"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.events) != 0 {
+		t.Fatal("safety timer fetched before due", h.events)
+	}
+	unlock, acquired, err := cycleLock(h.paths)
+	if err != nil || !acquired {
+		t.Fatal(err)
+	}
+	if err := h.app.Run([]string{"run-once"}); err != nil {
+		t.Fatal(err)
+	}
+	unlock()
+	h.errOut.Reset()
+	if len(h.events) != 0 {
+		t.Fatal("overlapping process ran")
+	}
+	state := h.state()
+	state.NextAttemptAt = cycleTime.Add(20 * time.Second)
+	if err := saveState(h.paths, state); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.app.Run([]string{"run-scheduled"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.events) == 0 {
+		t.Fatal("slightly early RTC wake lost cycle")
+	}
+}
+func TestCorruptRuntimeDoesNotAbandonCycle(t *testing.T) {
+	h := recoveryHarness(t)
+	writeTestFile(t, h.paths.StateFile, []byte("{"))
+	if err := h.run(); err != nil {
+		t.Fatal(err)
+	}
+	if h.state().BootID != "boot-one" {
+		t.Fatal("state not reconstructed")
+	}
+}
+func TestCriticalBatteryShutdownIsExplicitAndInjectable(t *testing.T) {
+	h := recoveryHarness(t)
+	writeTestFile(t, h.paths.ConfigFile, []byte(`{"device_id":"test","critical_battery_shutdown":true}`))
+	h.app.cycle.readBatterySample = func(Config) (*BatterySample, error) {
+		return &BatterySample{CapacityPct: "4", Status: "Discharging"}, nil
+	}
+	called := false
+	h.app.cycle.shutdown = func() error { called = true; return nil }
+	if err := h.run(); err != nil {
+		t.Fatal(err)
+	}
+	if !called {
+		t.Fatal("critical shutdown not invoked")
+	}
+	if strings.Contains(strings.Join(h.events, " "), "wifi") {
+		t.Fatal("critical battery fetched")
+	}
+}
+
+func TestBatteryStatusLogsActualPanelRefreshes(t *testing.T) {
+	h := recoveryHarness(t)
+	h.app.cycle.readBatterySample = func(Config) (*BatterySample, error) {
+		return &BatterySample{CapacityPct: "19", Status: "Discharging"}, nil
+	}
+	if err := h.run(); err != nil {
+		t.Fatal(err)
+	}
+	first := h.logs()[0]
+	if !first.ChangedScreen || !first.FullRefresh || first.SkippedRender {
+		t.Fatal(first)
+	}
+	if err := h.run(); err != nil {
+		t.Fatal(err)
+	}
+	second := h.logs()[1]
+	if second.ChangedScreen || second.FullRefresh || !second.SkippedRender {
+		t.Fatal(second)
+	}
+}
+func TestFailedChangedRenderPreservesLastUsableDownload(t *testing.T) {
+	h := recoveryHarness(t)
+	writeTestFile(t, h.paths.DownloadedImage, h.frame)
+	h.fail["render:full"] = errors.New("render rejected")
+	if err := h.run(); err == nil {
+		t.Fatal("expected failure")
+	}
+	actual, err := os.ReadFile(h.paths.DownloadedImage)
+	if err != nil || !bytes.Equal(actual, h.frame) {
+		t.Fatal("last good cache lost")
+	}
+	if !strings.Contains(strings.Join(h.events, " "), "local") {
+		t.Fatal("offline banner missing")
+	}
+	entry := h.logs()[0]
+	if !entry.FullRefresh || entry.SkippedRender {
+		t.Fatal("offline draw not reported", entry)
+	}
+}

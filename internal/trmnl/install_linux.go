@@ -61,13 +61,22 @@ func runInstallWithDeps(paths Paths, args []string, deps installDeps) error {
 		return err
 	}
 
-	return appliance.Install(snapshot(state), appliance.InstallDeps{UnitExists: deps.unitExists, Warn: deps.warn,
+	saved, err := hasInstallationSnapshot(paths)
+	if err != nil {
+		return err
+	}
+	metaSnapshot := snapshot(state)
+	metaSnapshot.Recorded = saved
+	return appliance.Install(metaSnapshot, appliance.InstallDeps{UnitExists: deps.unitExists, Warn: deps.warn,
 		WriteFile: deps.writeFile, Executable: deps.executable, SleepHookDir: deps.sleepHookDir, StockSyncUnit: deps.stockSyncUnit, UnitEnabled: deps.unitEnabled, Run: deps.run,
 		SaveState: func(meta appliance.Snapshot) error {
 			state.MaskedNoise = meta.MaskedNoise
 			state.StockSyncUnit = meta.StockSyncUnit
 			state.SyncWasEnabled = meta.SyncWasEnabled
 			state.XochitlWasEnabled = meta.XochitlWasEnabled
+			if err := saveInstallationSnapshot(paths, state); err != nil {
+				return err
+			}
 			return deps.saveState(paths, state)
 		},
 	})

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path/filepath"
+	"strings"
 )
 
 const (
@@ -39,6 +40,17 @@ func Disable(run func([]string) error, unit string) error {
 
 func Restore(state Snapshot, ops RestoreOps) error {
 	var errs []error
+	for _, cmd := range [][]string{{"systemctl", "disable", "--now", RecoveryTimerName},
+		{"systemctl", "stop", "trmnl-rm1-next-a.timer"}, {"systemctl", "stop", "trmnl-rm1-next-a.service"},
+		{"systemctl", "stop", "trmnl-rm1-next-b.timer"}, {"systemctl", "stop", "trmnl-rm1-next-b.service"}} {
+		if err := ops.Run(cmd); err != nil && !missingUnit(err) {
+			errs = append(errs, fmt.Errorf("quiesce %s: %w", cmd[len(cmd)-1], err))
+		}
+	}
+
+	if err := removeIfExists(ops.Remove, RecoveryTimerPath); err != nil {
+		errs = append(errs, fmt.Errorf("remove appliance recovery timer %s: %w", RecoveryTimerPath, err))
+	}
 
 	if err := ops.Run([]string{"systemctl", "disable", "--now", ServiceName}); err != nil {
 		errs = append(errs, fmt.Errorf("disable appliance service %s: %w", ServiceName, err))
@@ -121,3 +133,8 @@ func joinErrors(errs ...error) error {
 
 // Only restore the known stock units touched by the deployed appliance.
 var stockNoiseUnits = []string{"chronyd.service", "crashuploader.service", "memfaultd.service", "memfault-attributes.service", "swupdate.service", "swupdate.socket", "update-engine.service", "getty@tty1.service", "serial-getty@ttymxc0.service"}
+
+func missingUnit(err error) bool {
+	text := err.Error()
+	return strings.Contains(text, "not loaded") || strings.Contains(text, "does not exist") || strings.Contains(text, "not found")
+}

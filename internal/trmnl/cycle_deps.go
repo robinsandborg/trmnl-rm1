@@ -13,6 +13,8 @@ import (
 // tests. Configuration, HTTP decoding, hashing, and state transitions still
 // run through the production path. Each App owns its dependencies.
 type cycleDeps struct {
+	bootID               func() string
+	shutdown             func() error
 	ensureInterface      func(Config)
 	readBatterySample    func(Config) (*BatterySample, error)
 	determineRuntimeMode func(Paths, Config, State, time.Time) (RuntimeMode, error)
@@ -27,6 +29,8 @@ type cycleDeps struct {
 
 func defaultCycleDeps(prepare func(Config) (*http.Client, func(), error)) cycleDeps {
 	return cycleDeps{
+		bootID:               bootID,
+		shutdown:             func() error { return runCommand([]string{"systemctl", "poweroff"}) },
 		ensureInterface:      func(cfg Config) { network.EnsureInterface(networkOptions(cfg)) },
 		readBatterySample:    readBatterySample,
 		determineRuntimeMode: determineRuntimeMode,
