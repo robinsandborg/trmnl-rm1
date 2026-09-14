@@ -122,3 +122,18 @@ func TestRecoveryLabelsRemainDiagnostic(t *testing.T) {
 		}
 	}
 }
+
+func TestExcludedRowsBreakDischargeContinuity(t *testing.T) {
+	since, _ := time.Parse(time.RFC3339, "2026-09-14T01:00:00Z")
+	until, _ := time.Parse(time.RFC3339, "2026-09-14T03:00:00Z")
+	for _, excludedHour := range []int{0, 3} {
+		input := line(1, 90, "Discharging") + line(excludedHour, 95, "Charging") + line(2, 89, "Discharging")
+		r, err := Read(strings.NewReader(input), Filter{Since: since, Until: until})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r.Records != 2 || r.Cycles != 2 || len(r.Discharge) != 0 {
+			t.Fatalf("bridged excluded charging record at hour %d: %+v", excludedHour, r)
+		}
+	}
+}

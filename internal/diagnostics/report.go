@@ -103,6 +103,7 @@ func Read(input io.Reader, filter Filter) (Report, error) {
 		}
 		row.Start, row.End = row.Start.UTC(), row.End.UTC()
 		if !filter.Since.IsZero() && row.Start.Before(filter.Since) || !filter.Until.IsZero() && !row.Start.Before(filter.Until) {
+			rows = append(rows, record{}) // Filtering must not hide a continuity break.
 			continue
 		}
 		r.Records++

@@ -35,7 +35,7 @@ For an existing local log, run `build/trmnl-power-report-host < cycles.log`. Rep
 
 Cycle durations use logged wall-clock start/end times and nearest-rank p95; the median averages the middle pair. They omit startup, network cleanup, and time awake between cycles. Clock adjustments can distort duration. Requested intervals omit nonpositive/missing entries. **Neither the interval nor an `appliance` mode record proves suspend residency.** No duty-cycle or battery-life projection is produced.
 
-Discharge windows link adjacent valid `Discharging` samples with 0–100 integer capacities. Charging, missing/invalid samples, backward timestamps, and capacity increases break windows. Flat percentages are retained to show gauge resolution. Unobserved charging, a reboot or missing cycles between samples can still invalidate a window: compare it with the trial notes and journal. Do not add windows across different trials or interpret percentage points as measured energy.
+Discharge windows link adjacent valid `Discharging` samples with 0–100 integer capacities. Charging, missing/invalid samples, records excluded by the time filter, backward timestamps, and capacity increases break windows. Flat percentages are retained to show gauge resolution. Unobserved charging, a reboot or missing cycles between samples can still invalidate a window: compare it with the trial notes and journal. Do not add windows across different trials or interpret percentage points as measured energy.
 
 ## Baseline and comparison
 
