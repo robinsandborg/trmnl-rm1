@@ -15,10 +15,11 @@ const (
 )
 
 type RestoreOps struct {
-	RestoreNetwork func() error
-	Run            func([]string) error
-	Remove         func(string) error
-	SleepHookDir   func() (string, error)
+	AcquireCycleLock func() (func(), error)
+	RestoreNetwork   func() error
+	Run              func([]string) error
+	Remove           func(string) error
+	SleepHookDir     func() (string, error)
 }
 
 func Disable(run func([]string) error, unit string) error {
@@ -40,23 +41,12 @@ func Disable(run func([]string) error, unit string) error {
 
 func Restore(state Snapshot, ops RestoreOps) error {
 	var errs []error
-	for _, cmd := range [][]string{{"systemctl", "disable", "--now", RecoveryTimerName},
-		{"systemctl", "stop", "trmnl-rm1-next-a.timer"}, {"systemctl", "stop", "trmnl-rm1-next-a.service"},
-		{"systemctl", "stop", "trmnl-rm1-next-b.timer"}, {"systemctl", "stop", "trmnl-rm1-next-b.service"}} {
-		if err := ops.Run(cmd); err != nil && !missingUnit(err) {
-			errs = append(errs, fmt.Errorf("quiesce %s: %w", cmd[len(cmd)-1], err))
-		}
+	if err := ops.Run([]string{"systemctl", "disable", "--now", RecoveryTimerName}); err != nil && !missingUnit(err) {
+		errs = append(errs, fmt.Errorf("quiesce %s: %w", RecoveryTimerName, err))
 	}
 
 	if err := removeIfExists(ops.Remove, RecoveryTimerPath); err != nil {
 		errs = append(errs, fmt.Errorf("remove appliance recovery timer %s: %w", RecoveryTimerPath, err))
-	}
-
-	if err := ops.Run([]string{"systemctl", "disable", "--now", ServiceName}); err != nil {
-		errs = append(errs, fmt.Errorf("disable appliance service %s: %w", ServiceName, err))
-	}
-	if err := removeIfExists(ops.Remove, ServicePath); err != nil {
-		errs = append(errs, fmt.Errorf("remove appliance unit file %s: %w", ServicePath, err))
 	}
 
 	sleepDir, err := ops.SleepHookDir()
@@ -69,8 +59,36 @@ func Restore(state Snapshot, ops RestoreOps) error {
 		}
 	}
 
+	if err := ops.Run([]string{"systemctl", "disable", "--now", ServiceName}); err != nil && !missingUnit(err) {
+		errs = append(errs, fmt.Errorf("disable appliance service %s: %w", ServiceName, err))
+	}
+	if err := removeIfExists(ops.Remove, ServicePath); err != nil {
+		errs = append(errs, fmt.Errorf("remove appliance unit file %s: %w", ServicePath, err))
+	}
+
 	if err := ops.Run([]string{"systemctl", "daemon-reload"}); err != nil {
 		errs = append(errs, fmt.Errorf("reload systemd units: %w", err))
+	}
+
+	// Stop every installed producer before the final timer cleanup. In the
+	// facade a marker prevents new manual cycles while the lock drains any
+	// already-running cycle; acquiring it before stopping services would deadlock.
+	for _, unit := range []string{"trmnl-rm1-next-a.service", "trmnl-rm1-next-b.service"} {
+		if err := ops.Run([]string{"systemctl", "stop", unit}); err != nil && !missingUnit(err) {
+			errs = append(errs, fmt.Errorf("quiesce %s: %w", unit, err))
+		}
+	}
+	if ops.AcquireCycleLock != nil {
+		unlock, err := ops.AcquireCycleLock()
+		if err != nil {
+			return joinErrors(append(errs, err)...)
+		}
+		defer unlock()
+	}
+	for _, unit := range []string{"trmnl-rm1-next-a.timer", "trmnl-rm1-next-a.service", "trmnl-rm1-next-b.timer", "trmnl-rm1-next-b.service"} {
+		if err := ops.Run([]string{"systemctl", "stop", unit}); err != nil && !missingUnit(err) {
+			errs = append(errs, fmt.Errorf("quiesce %s: %w", unit, err))
+		}
 	}
 
 	if ops.RestoreNetwork != nil {

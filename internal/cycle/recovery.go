@@ -36,6 +36,9 @@ func localScreen(opts Options, ops Operations, state *State, name, message strin
 }
 
 func batteryCycle(opts Options, ops Operations, state *State, battery *power.BatterySample, decision power.BatteryDecision, started time.Time) error {
+	if decision.Shutdown {
+		return criticalBatteryCycle(opts, ops, state, battery, started)
+	}
 	message := "Please charge the device"
 	if !decision.Valid {
 		message = "Battery unavailable - check device"
@@ -62,9 +65,6 @@ func batteryCycle(opts Options, ops Operations, state *State, battery *power.Bat
 	}
 	if err = ops.AppendLog(CycleLog{StartedAt: started, EndedAt: ops.Now(), Mode: mode.Name, Battery: battery, ChangedScreen: rendered, SkippedRender: !rendered, FullRefresh: rendered, RefreshIntervalS: int(interval.Seconds()), MaintenanceReason: decision.Reason}); err != nil {
 		return err
-	}
-	if decision.Shutdown && ops.Shutdown != nil {
-		return ops.Shutdown()
 	}
 	if effective.ShouldSuspend {
 		return ops.Suspend()
@@ -109,4 +109,25 @@ func recoverCycle(opts Options, ops Operations, state State, battery *power.Batt
 		errs = append(errs, ops.Suspend())
 	}
 	return errors.Join(append([]error{fmt.Errorf("%s: retry in %s: %w", state.LastFailureCategory, interval, cause)}, errs...)...)
+}
+
+// Critical shutdown owns its outcome independently of ordinary recovery.
+// No RTC/timer plan is necessary before powering off. Rendering and durable
+// diagnostics are best effort: failure of either must not prevent shutdown.
+func criticalBatteryCycle(opts Options, ops Operations, state *State, battery *power.BatterySample, started time.Time) error {
+	rendered, drawErr := localScreen(opts, ops, state, "critical-battery", "Please charge the device")
+	state.LastMode = "critical-battery"
+	state.NextAttemptAt = ops.Now().Add(5 * time.Minute)
+	saveErr := ops.SaveState(*state)
+	logErr := ops.AppendLog(CycleLog{StartedAt: started, EndedAt: ops.Now(), Mode: "critical-battery", Battery: battery, ChangedScreen: rendered, SkippedRender: !rendered, FullRefresh: rendered, MaintenanceReason: "critical-battery"})
+	var shutdownErr error
+	if ops.Shutdown == nil {
+		shutdownErr = errors.New("critical battery shutdown unavailable")
+	} else {
+		shutdownErr = ops.Shutdown()
+	}
+	if err := errors.Join(drawErr, saveErr, logErr, shutdownErr); err != nil {
+		return fmt.Errorf("critical-battery: %w", err)
+	}
+	return nil
 }

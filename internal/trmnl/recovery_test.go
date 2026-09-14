@@ -235,3 +235,166 @@ func TestFailedChangedRenderPreservesLastUsableDownload(t *testing.T) {
 		t.Fatal("offline draw not reported", entry)
 	}
 }
+
+func TestCriticalShutdownSurvivesAncillaryFailures(t *testing.T) {
+	for _, stage := range []string{"local", "save", "log:", "shutdown", "none"} {
+		t.Run(stage, func(t *testing.T) {
+			h := recoveryHarness(t)
+			writeTestFile(t, h.paths.ConfigFile, []byte(`{"device_id":"test","critical_battery_shutdown":true}`))
+			h.app.cycle.readBatterySample = func(Config) (*BatterySample, error) {
+				return &BatterySample{CapacityPct: "4", Status: "Discharging"}, nil
+			}
+			failure := errors.New("injected ancillary failure")
+			if stage != "shutdown" && stage != "none" {
+				h.fail[stage] = failure
+			}
+			calls := 0
+			h.app.cycle.shutdown = func() error {
+				calls++
+				if stage == "shutdown" {
+					return failure
+				}
+				return nil
+			}
+			h.app.cycle.planNextCycle = func(Config, time.Duration, RuntimeMode) (RuntimeMode, error) {
+				t.Fatal("critical shutdown must not depend on planning a future wake")
+				return RuntimeMode{}, failure
+			}
+			h.app.cycle.suspendDevice = func(Config) error { t.Fatal("critical shutdown fell back to sleep"); return nil }
+			err := h.app.Run([]string{"run-once"})
+			if calls != 1 {
+				t.Fatalf("shutdown calls=%d; error=%v", calls, err)
+			}
+			if stage != "none" && !errors.Is(err, failure) {
+				t.Fatalf("diagnostic failure lost: %v", err)
+			}
+			if stage == "none" && err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestBrokenBootRendererRetainsSchedulingBackoff(t *testing.T) {
+	h := recoveryHarness(t)
+	h.before.ConsecutiveFailures = 0
+	h.before.BootID = "previous-boot"
+	h.seed()
+	now := cycleTime
+	h.app.now = func() time.Time { return now }
+	h.app.cycle.determineRuntimeMode = func(Paths, Config, State, time.Time) (RuntimeMode, error) {
+		return RuntimeMode{Name: "appliance", ShouldSuspend: true}, nil
+	}
+	renders := 0
+	h.app.cycle.renderImage = func(Config, []byte, string, RefreshMode) error { renders++; return errors.New("panel unavailable") }
+	run := func() {
+		t.Helper()
+		if err := h.app.Run([]string{"run-scheduled"}); err == nil {
+			t.Fatal("expected rendering failure")
+		}
+	}
+	run()
+	state := h.state()
+	if state.BootID != "previous-boot" || state.ScheduleBootID != "boot-one" || !state.NextAttemptAt.Equal(now.Add(5*time.Minute)) {
+		t.Fatal(state)
+	}
+	now = now.Add(5 * time.Minute)
+	run()
+	state = h.state()
+	if state.ConsecutiveFailures != 2 || !state.NextAttemptAt.Equal(now.Add(10*time.Minute)) {
+		t.Fatal(state)
+	}
+	before := renders
+	now = now.Add(5 * time.Minute)
+	if err := h.app.Run([]string{"run-scheduled"}); err != nil {
+		t.Fatal(err)
+	}
+	if renders != before {
+		t.Fatal("safety timer bypassed backoff because boot display was not restored")
+	}
+	now = now.Add(5 * time.Minute)
+	run()
+	if state = h.state(); state.ConsecutiveFailures != 3 || !state.NextAttemptAt.Equal(now.Add(20*time.Minute)) {
+		t.Fatal(state)
+	}
+}
+
+func TestLateCycleFailuresRetainPreviousBackoff(t *testing.T) {
+	for _, stage := range []string{"plan", "log", "save"} {
+		t.Run(stage, func(t *testing.T) {
+			h := recoveryHarness(t)
+			h.before.ConsecutiveFailures = 0
+			h.seed()
+			h.app.cycle.determineRuntimeMode = func(Paths, Config, State, time.Time) (RuntimeMode, error) {
+				return RuntimeMode{Name: "appliance", ShouldSuspend: true}, nil
+			}
+			failure := errors.New("persistent late failure")
+			if stage == "plan" {
+				h.app.cycle.planNextCycle = func(_ Config, _ time.Duration, m RuntimeMode) (RuntimeMode, error) {
+					if m.Name == "appliance" {
+						return m, failure
+					}
+					return m, nil
+				}
+			}
+			if stage == "log" {
+				h.app.cycle.appendCycleLog = func(p Paths, e CycleLog) error {
+					if e.FailureCategory == "" {
+						return failure
+					}
+					return appendCycleLog(p, e)
+				}
+			}
+			if stage == "save" {
+				h.app.cycle.saveState = func(p Paths, s State) error {
+					if s.ConsecutiveFailures == 0 {
+						return failure
+					}
+					return saveState(p, s)
+				}
+			}
+			for i, delay := range []time.Duration{5, 10, 20} {
+				if err := h.app.Run([]string{"run-once"}); err == nil || !strings.Contains(err.Error(), failure.Error()) {
+					t.Fatal(err)
+				}
+				state := h.state()
+				if state.ConsecutiveFailures != i+1 || !state.NextAttemptAt.Equal(cycleTime.Add(delay*time.Minute)) {
+					t.Fatalf("attempt%d: %+v", i+1, state)
+				}
+			}
+		})
+	}
+}
+
+func TestRestoreMarkerExcludesManualAndScheduledCycles(t *testing.T) {
+	h := recoveryHarness(t)
+	if err := beginRestore(h.paths); err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range []string{"run-once", "run-scheduled"} {
+		if err := h.app.Run([]string{command}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(h.events) != 0 {
+		t.Fatal("restoration marker allowed a cycle", h.events)
+	}
+	unlock, acquired, err := cycleLock(h.paths)
+	if err != nil || !acquired {
+		t.Fatal(err)
+	}
+	if _, err := lockForRestore(h.paths); err == nil {
+		t.Fatal("restore ignored already-running manual cycle")
+	}
+	unlock()
+	if blocked, err := blockedForRestore(h.paths); err != nil || !blocked {
+		t.Fatal("failed restore lost exclusion marker")
+	}
+	if err := finishRestore(h.paths); err != nil {
+		t.Fatal(err)
+	}
+	h.errOut.Reset()
+	if err := h.run(); err != nil {
+		t.Fatal(err)
+	}
+}

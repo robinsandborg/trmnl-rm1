@@ -12,7 +12,7 @@ import (
 func TestRestoreRemovalErrorText(t *testing.T) {
 	fail := errors.New("denied")
 	err := appliance.Restore(appliance.Snapshot{}, appliance.RestoreOps{Run: func([]string) error { return nil }, Remove: func(string) error { return fail }, SleepHookDir: func() (string, error) { return "/sleep", nil }})
-	want := "remove appliance recovery timer /etc/systemd/system/trmnl-rm1-recovery.timer: denied\nremove appliance unit file /etc/systemd/system/trmnl-rm1-appliance.service: denied\nremove appliance resume hook /sleep/trmnl-rm1-resume: denied"
+	want := "remove appliance recovery timer /etc/systemd/system/trmnl-rm1-recovery.timer: denied\nremove appliance resume hook /sleep/trmnl-rm1-resume: denied\nremove appliance unit file /etc/systemd/system/trmnl-rm1-appliance.service: denied"
 	if err == nil || err.Error() != want || !errors.Is(err, fail) {
 		t.Fatalf("%v", err)
 	}
@@ -103,7 +103,7 @@ func TestRestoreRecoversNetworkingBeforeStockUI(t *testing.T) {
 	if !errors.Is(err, fail) || err.Error() != "restore wireless networking: radio failed" {
 		t.Fatal(err)
 	}
-	want := []string{"systemctl disable --now trmnl-rm1-recovery.timer", "systemctl stop trmnl-rm1-next-a.timer", "systemctl stop trmnl-rm1-next-a.service", "systemctl stop trmnl-rm1-next-b.timer", "systemctl stop trmnl-rm1-next-b.service", "systemctl disable --now trmnl-rm1-appliance.service", "systemctl daemon-reload", "network", "systemctl unmask xochitl.service", "systemctl enable --now xochitl.service"}
+	want := []string{"systemctl disable --now trmnl-rm1-recovery.timer", "systemctl disable --now trmnl-rm1-appliance.service", "systemctl daemon-reload", "systemctl stop trmnl-rm1-next-a.service", "systemctl stop trmnl-rm1-next-b.service", "systemctl stop trmnl-rm1-next-a.timer", "systemctl stop trmnl-rm1-next-a.service", "systemctl stop trmnl-rm1-next-b.timer", "systemctl stop trmnl-rm1-next-b.service", "network", "systemctl unmask xochitl.service", "systemctl enable --now xochitl.service"}
 	if !reflect.DeepEqual(trace, want) {
 		t.Fatalf("%v", trace)
 	}
@@ -125,5 +125,95 @@ func TestRestoreReportsFailedTimerStopButToleratesAbsentLegacyUnits(t *testing.T
 	})
 	if !errors.Is(err, fail) || strings.Contains(err.Error(), "not loaded") {
 		t.Fatal(err)
+	}
+}
+
+func TestRestoreFinalCleanupFollowsAllProducersAndLock(t *testing.T) {
+	armed := map[string]bool{}
+	mainStopped, hookRemoved, locked := false, false, false
+	err := appliance.Restore(appliance.Snapshot{}, appliance.RestoreOps{
+		Remove: func(path string) error {
+			if strings.HasSuffix(path, appliance.ResumeHookName) {
+				hookRemoved = true
+			}
+			return nil
+		},
+		SleepHookDir: func() (string, error) { return "/sleep", nil },
+		Run: func(argv []string) error {
+			last := argv[len(argv)-1]
+			if last == appliance.ServiceName {
+				if !hookRemoved {
+					t.Fatal("resume producer survived main shutdown")
+				}
+				mainStopped = true
+				armed["trmnl-rm1-next-a.timer"] = true
+			}
+			if last == "trmnl-rm1-next-b.service" && !locked {
+				armed["trmnl-rm1-next-a.timer"] = true
+			}
+			if last == "trmnl-rm1-next-a.timer" || last == "trmnl-rm1-next-b.timer" {
+				if !mainStopped || !locked {
+					t.Fatal("final timer cleanup preceded producer exclusion")
+				}
+				delete(armed, last)
+			}
+			return nil
+		},
+		AcquireCycleLock: func() (func(), error) {
+			if !mainStopped {
+				t.Fatal("lock acquired before stopping service")
+			}
+			locked = true
+			return func() { locked = false }, nil
+		},
+		RestoreNetwork: func() error {
+			if len(armed) > 0 || !locked {
+				t.Fatal("stock restoration raced a cycle producer")
+			}
+			return nil
+		},
+	})
+	if err != nil || len(armed) != 0 || locked {
+		t.Fatalf("err=%v armed=%v locked=%v", err, armed, locked)
+	}
+}
+
+func TestRestoreRetryAfterPartialRemovalToleratesMissingMainUnit(t *testing.T) {
+	mainPresent := true
+	networkFailure := errors.New("temporary network recovery error")
+	attempt := 0
+	ops := appliance.RestoreOps{
+		Run: func(argv []string) error {
+			if argv[1] == "disable" && argv[len(argv)-1] == appliance.ServiceName && !mainPresent {
+				return errors.New("Failed to disable unit: Unit file trmnl-rm1-appliance.service does not exist.")
+			}
+			return nil
+		},
+		Remove: func(path string) error {
+			if path == appliance.ServicePath {
+				if !mainPresent {
+					return os.ErrNotExist
+				}
+				mainPresent = false
+			}
+			return nil
+		},
+		SleepHookDir: func() (string, error) { return "/sleep", nil },
+		RestoreNetwork: func() error {
+			attempt++
+			if attempt == 1 {
+				return networkFailure
+			}
+			return nil
+		},
+	}
+	if err := appliance.Restore(appliance.Snapshot{}, ops); !errors.Is(err, networkFailure) {
+		t.Fatal(err)
+	}
+	if mainPresent {
+		t.Fatal("first attempt did not remove main unit")
+	}
+	if err := appliance.Restore(appliance.Snapshot{}, ops); err != nil {
+		t.Fatalf("partial restore cannot converge: %v", err)
 	}
 }

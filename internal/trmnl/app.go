@@ -60,6 +60,14 @@ func (a *App) Run(args []string) error {
 			return nil
 		}
 		defer unlock()
+		blocked, err := blockedForRestore(paths)
+		if err != nil {
+			return err
+		}
+		if blocked {
+			fmt.Fprintln(a.stderr, "cycle skipped: restore-stock is in progress")
+			return nil
+		}
 		if args[0] == "run-scheduled" {
 			return a.runScheduled(paths)
 		}

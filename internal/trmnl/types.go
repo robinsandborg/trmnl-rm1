@@ -78,6 +78,7 @@ type DisplayPower struct {
 }
 
 type State struct {
+	ScheduleBootID      string          `json:"schedule_boot_id,omitempty"`
 	BootID              string          `json:"boot_id,omitempty"`
 	LocalScreen         string          `json:"local_screen,omitempty"`
 	BatteryLow          bool            `json:"battery_low,omitempty"`

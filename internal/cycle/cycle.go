@@ -13,15 +13,20 @@ import (
 func Run(opts Options, state State, ops Operations) (result error) {
 	startedAt := ops.Now().UTC()
 	battery, _ := ops.ReadBattery()
+	criticalShutdown := false
+	failuresBefore := state.ConsecutiveFailures
 	if opts.Recovery {
 		defer func() {
-			if result != nil {
+			if result != nil && !criticalShutdown {
+				state.ConsecutiveFailures = failuresBefore
 				result = recoverCycle(opts, ops, state, battery, startedAt, result)
 			}
 		}()
 	}
 	if opts.Recovery {
+		state.ScheduleBootID = opts.BootID
 		decision := opts.BatteryPolicy.Decide(battery, state.BatteryLow)
+		criticalShutdown = decision.Shutdown
 		state.BatteryLow = decision.Low
 		if decision.Low {
 			return batteryCycle(opts, ops, &state, battery, decision, startedAt)

@@ -56,6 +56,9 @@ func runInstallWithDeps(paths Paths, args []string, deps installDeps) error {
 		return err
 	}
 
+	if err := finishRestore(paths); err != nil {
+		return err
+	}
 	state, err := loadState(paths)
 	if err != nil {
 		return err
@@ -83,6 +86,9 @@ func runInstallWithDeps(paths Paths, args []string, deps installDeps) error {
 }
 
 func (a *App) runRestore(paths Paths) error {
+	if err := beginRestore(paths); err != nil {
+		return err
+	}
 	state, err := loadState(paths)
 	if err != nil {
 		return err
@@ -91,12 +97,17 @@ func (a *App) runRestore(paths Paths) error {
 	// Stock mode must regain the radio that appliance cleanup unbound.
 	// Invalid app configuration must not prevent restoring the stock UI.
 	cfg, _ := loadConfig(paths)
-	return runRestoreWithOps(state, applianceOps{
+	err = runRestoreWithOps(state, applianceOps{
+		acquireCycleLock:   func() (func(), error) { return lockForRestore(paths) },
 		restoreNetwork:     func() error { return network.BringUp(networkOptions(cfg), runCommand) },
 		run:                runCommand,
 		remove:             os.Remove,
 		detectSleepHookDir: detectSleepHookDir,
 	})
+	if err != nil {
+		return err
+	}
+	return finishRestore(paths)
 }
 
 func detectSleepHookDir() (string, error)        { return appliance.DetectSleepHookDir() }
