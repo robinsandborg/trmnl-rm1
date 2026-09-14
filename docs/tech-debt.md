@@ -81,3 +81,5 @@ Cycle orchestration is extracted and composed through the original compatibility
 ## Device validation findings
 
 The deployed appliance had SDIO and `masked_noise` behavior absent from the committed baseline. Device validation reproduced identity failure with an unbound radio and metadata loss in a state round trip. The compatibility fix integrates bounded enumeration, the deployed radio lifecycle, metadata retention/restoration, and network recovery when returning to stock. Existing recorded enablement flags now survive reinstall. General durable metadata recovery (including unmarked all-false snapshots), atomic writes, retry ownership, and timer cleanup remain backlog work. See [device evidence and rollback](device-validation.md).
+
+The final device pass also reproduced a boot mount race (`203/EXEC` before `/home` mounted). The installed unit now requires `/home/root`; upgrade via `install-appliance` to refresh that wiring. Broader retry ownership, boot redraw, and battery policy remain issue #3.

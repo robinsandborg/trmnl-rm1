@@ -1,6 +1,6 @@
 # Incremental refactoring plan
 
-**Status: all extraction phases merged; Phase 8 deployed compatibility fixes under device validation. All remaining work authorized on 2026-09-14.** The user requested that each phase be implemented, checked, reviewed, and merged without further phase approval prompts, followed by comprehensive RM1 tests and fixes. After the foundation is verified and pushed, delegate each open repository issue into its own PR and review every PR. Optional Phase 8 fixes will be selected from concrete test/recovery findings, with migration and rollback notes, rather than changing unrelated behavior during extraction.
+**Status: all extraction phases merged; Phase 8 compatibility fixes verified on RM1 and ready for final merge. All remaining work authorized on 2026-09-14.** The user requested that each phase be implemented, checked, reviewed, and merged without further phase approval prompts, followed by comprehensive RM1 tests and fixes. After the foundation is verified and pushed, delegate each open repository issue into its own PR and review every PR. Optional Phase 8 fixes will be selected from concrete test/recovery findings, with migration and rollback notes, rather than changing unrelated behavior during extraction.
 
 Phase 1 is isolated from the shared checkout's uncommitted Wi-Fi SDIO/stock-noise changes and starts at committed `2a86333`. Their integration must retain and extend the baseline (including interface enumeration before MAC fallback); those unrelated changes are not imported here.
 
@@ -54,4 +54,4 @@ Done means tests pass, behavior is matched or explicitly migrated, documentation
 
 ## Remaining delivery
 
-Phase 9 is merged. Phase 8 now addresses the reproduced deployed SDIO/restore-metadata compatibility findings, with [migration and device evidence](device-validation.md). Then verify the complete software on RM1, resolve findings, and push/merge the final changes before delegating repository issues. Automated checks remain required for every phase.
+Phase 9 is merged. Phase 8 addresses the reproduced deployed SDIO/restore-metadata compatibility findings and boot mount race, with [migration and completed device evidence](device-validation.md). Merge and deploy the verified fix, then delegate repository issues #3 and #8 into separate PRs and review both. Automated checks remain required for every phase.

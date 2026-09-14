@@ -128,6 +128,8 @@ For a **full flash refresh** of the prepared PNG even when its hash is unchanged
 ssh root@10.11.99.1 'FBINK_NO_SW_ROTA=1 /home/root/bin/fbink -g file=/home/root/.local/state/trmnl-rm1/current.png --waveform GC16 --noviewport --flash'
 ```
 
+After a cold boot, first restore the configured framebuffer depth (for this RM1, `/home/root/bin/fbdepth -d 8`); firmware starts in 16-bit landscape mode and FBInk can reject a refresh there. Apply configured hardware rotation too if enabled. The client normally performs this preparation when it renders.
+
 This redraws the prepared file; it does not fetch a new image or advance the client's refresh counter. Check the cycle log first: the prepared file is written before rendering and may belong to a failed render. Preserve `state.json`; deleting it discards restore metadata and the first default client render is partial, not full.
 
 ## Test FBInk directly

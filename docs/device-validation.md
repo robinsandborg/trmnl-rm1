@@ -30,6 +30,12 @@ Rollback: quiesce all appliance/A/B entrypoints, restore the backed-up deployed 
 
 The fixture HTTP server and isolated config/state live under `/home/root/trmnl-smoke`; test configuration never replaces production credentials. The original service hook was temporarily non-executable for isolated RTC testing and restored to mode 0755 afterward.
 
-## Remaining validation
+## Final lifecycle and boot result
 
-The actual A-to-B handoff completed with service exit 0 and the B timer armed. Corrected restore exited successfully with xochitl and supplicant active, DHCP on wlan0, the saved stock services enabled, and appliance artifacts removed. Finish reinstall and boot/startup checks. Restore the live display, remove test services, preserve all rollback artifacts, return the maintenance sentinel to its original state, then record the final deployed revision and results here. Panel orientation/refresh appearance was also requested from the user; framebuffer equivalence does not measure physical ghosting or battery endurance. Backlog battery-depletion/long-duration battery tests belong to issues #3 and #8.
+The actual A-to-B handoff completed with service exit 0 and the B timer armed. Corrected restore exited successfully with xochitl and supplicant active, DHCP on wlan0, the saved stock services enabled, and appliance artifacts removed. Reinstall exited successfully, retained all nine noise entries and the original UI/sync flags, and installed an executable resume hook.
+
+After adding the mount dependency, a second reboot (`489ee52a-8a6c-4264-bb6d-baaa6ae202e0`) mounted `/home` at 7.226 seconds and started the appliance at 7.291 seconds. Its live cycle completed at 21:48:24 UTC with no failures and the next A timer armed. This verifies automatic startup with USB connected; a wall-charger-only boot and physical depletion remain part of issue #3. The unchanged payload was skipped as in the baseline; boot-aware redraw remains that issue's separate requirement.
+
+The fixture server was stopped before reboot and its transient unit disappeared. Production credentials were preserved and the maintenance sentinel returned to its original absent state. Rollback artifacts remain private on the device. The prepared live image was restored with a full FBInk refresh after the trials. The final clean merged binary's revision and SHA-256 are recorded on-device in `/home/root/trmnl-build-info` at deployment.
+
+Panel orientation/refresh appearance was requested from the user; framebuffer equivalence does not measure physical ghosting. These charging tests do not establish battery endurance, depletion recovery, charger-triggered power-on, or low-battery thresholds. Those measurements and broader recovery improvements belong to issues #3 and #8.
