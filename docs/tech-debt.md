@@ -1,6 +1,6 @@
 # Technical debt
 
-Inventory updated for Phase 2, 2026-09-14. The [architecture map](architecture.md) now describes merged Phase 1 baseline `dba4fb7` plus the BYOS extraction. Phase 0 observations about uncommitted Wi-Fi SDIO and stock-noise work are called out below; they are excluded from this PR. Priorities below are local sequencing judgments, not GitHub triage labels. Risks inferred from code are not claimed as reproduced device failures. Phase 1 adds characterization and documentation corrections; Phase 2 extracts BYOS while preserving the runtime risks below.
+Inventory updated for Phase 3, 2026-09-14. The [architecture map](architecture.md) now describes merged Phase 2 baseline `54f2fdd` plus the display extraction. Phase 0 observations about uncommitted Wi-Fi SDIO and stock-noise work are called out below; they are excluded from this PR. Priorities below are local sequencing judgments, not GitHub triage labels. Risks inferred from code are not claimed as reproduced device failures. Phase 1 adds characterization and documentation corrections; Phases 2 and 3 extract BYOS and display while preserving the runtime risks below.
 
 ## TD-01 — Cycle behavior lacks characterization
 
@@ -10,7 +10,7 @@ The difficult contract is effect ordering: state/log writes before suspend, clea
 
 ## TD-02 — Host checks omit device-critical paths
 
-**Automated platform gap addressed in Phase 1; hardware gap remains.** Build tags exclude Linux implementations on macOS. [CI](../.github/workflows/checks.yml) now runs both platforms with race detection/vet plus ARMv7 builds. The local Linux suite executes in Docker. Cycle/persistence/network-lifecycle/install-order contracts are covered, but display transforms, actual association, sysfs power effects, full install rollback, and device timing still need later-phase evidence.
+**Automated platform gap addressed in Phase 1; hardware gap remains.** Build tags exclude Linux implementations on macOS. [CI](../.github/workflows/checks.yml) now runs both platforms with race detection/vet plus ARMv7 builds. The local Linux suite executes in Docker. Cycle/persistence/network-lifecycle/install-order contracts are covered. Phase 3 adds portable pixel fixtures and Linux renderer command/failure traces. Actual association, sysfs power effects, full install rollback, and device timing still need device evidence.
 
 Run host and Linux tests plus ARMv7 builds. Add meaningful contract fixtures and failure cases per seam, rather than relying on a coverage percentage. Hardware smoke checks remain necessary for FBInk orientation, repeated suspend/resume, SDIO rebinding, and service restoration; cross-compilation cannot establish these properties.
 
@@ -30,7 +30,7 @@ Success records `LastMode` before RTC fallback changes the effective mode. A sus
 
 ## TD-05 — Hardware policy and low-level effects are intertwined
 
-**High for extraction risk.** [`network_linux.go`](../internal/trmnl/network_linux.go) combines link control and real-time connectivity polling. The uncommitted implementation observed in Phase 0 additionally mixes systemd, rfkill, SDIO discovery, and fixed sysfs paths; that work is outside this PR. [`render_linux.go`](../internal/trmnl/render_linux.go) puts pure crop/grayscale/rotation code behind Linux tags alongside FBInk commands. [`power_linux.go`](../internal/trmnl/power_linux.go) combines battery sampling, runtime observations, RTC writes, timers, and suspend.
+**High for extraction risk.** [`network_linux.go`](../internal/trmnl/network_linux.go) combines link control and real-time connectivity polling. The uncommitted implementation observed in Phase 0 additionally mixes systemd, rfkill, SDIO discovery, and fixed sysfs paths; that work is outside this PR. Phase 3 separates portable crop/grayscale/rotation into [`display/prepare.go`](../internal/display/prepare.go) and Linux FBInk effects into [`display/render_linux.go`](../internal/display/render_linux.go), with a command runner supplied by the facade. Pixel and command contracts are captured; physical rendering remains unverified. [`power_linux.go`](../internal/trmnl/power_linux.go) combines battery sampling, runtime observations, RTC writes, timers, and suspend.
 
 Existing runner/dependency seams in power, runtime mode, and restore provide a starting point. Keep their device-specific ordering: A/B timers must not stop their own service; the resume hook must remain nonblocking; the pending SDIO changes require Wi-Fi re-enumeration before MAC fallback. Historical fixes `379df59`, `0ccf51d`, and `2d6db09` show these orderings have already mattered. Move one cohesive module at a time and verify command traces plus actual device behavior where applicable.
 
@@ -44,7 +44,7 @@ The rollback procedure retains the previous binary and compatible configuration/
 
 ## TD-07 — Configuration contracts are implicit
 
-**Medium; BYOS mapping characterized in Phase 2.** [`types.go`](../internal/trmnl/types.go) mixes wire structures, installation state, defaults, and policy helpers. Effective accessors replace nonpositive values with defaults; several validation checks therefore cannot reject raw nonpositive input. Rotation zero also selects the default. Nested and top-level full-refresh fields coexist; `framebuffer_device` is reserved but unused. Linux and non-Linux configured device-ID trimming differ.
+**Medium; BYOS mapping characterized in Phase 2 and display mapping in Phase 3.** [`types.go`](../internal/trmnl/types.go) mixes wire structures, installation state, defaults, and policy helpers. Effective accessors replace nonpositive values with defaults; several validation checks therefore cannot reject raw nonpositive input. Rotation zero also selects the default. Nested and top-level full-refresh fields coexist; `framebuffer_device` is reserved but unused. Linux and non-Linux configured device-ID trimming differ.
 
 Characterize omitted/zero/negative fields, nested precedence, unknown JSON fields, and platform differences. Preserve public Go surfaces and serialized forms during package moves using legacy wrappers and explicit narrow mappings. Changing accepted inputs or precedence is a compatibility change, not incidental cleanup.
 
@@ -56,4 +56,4 @@ Body/pixel limits, command cancellation, and log retention would change accepted
 
 ## Proposed order and verification limits
 
-Follow [the strangler plan](refactoring-plan.md): establish behavioral evidence, extract leaf modules, then move orchestration and retire forwarding code. This inventory is not an instruction to fix every item in one PR. Phase 2 verifies host and Linux suites/vet, compiles all package tests for ARMv7, and compares the facade/cycle corpus against pre-extraction code. Physical-device behavior remains unverified and is deferred until the completed refactor as authorized; see [validation evidence](phase-2-validation.md).
+Follow [the strangler plan](refactoring-plan.md): establish behavioral evidence, extract leaf modules, then move orchestration and retire forwarding code. This inventory is not an instruction to fix every item in one PR. Phase 3 verifies host and Linux suites/vet, compiles the executable and all package tests for ARMv7, and compares display pixels and facade/cycle tests against pre-extraction code. Physical-device behavior remains unverified and is deferred until the completed refactor as authorized; see [validation evidence](phase-3-validation.md).

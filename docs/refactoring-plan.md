@@ -1,6 +1,6 @@
 # Incremental refactoring plan
 
-**Status: Phase 1 merged; Phase 2 approved on 2026-09-14.** The user authorized merging [Phase 1 PR #4](https://github.com/robinsandborg/trmnl-rm1/pull/4) and proceeding to the next phase, with discretion to defer device verification until the refactor is complete. Phase 1 merged as `dba4fb7`; Phase 2 starts there on an isolated branch. [Phase 1 evidence](phase-1-validation.md) and [Phase 2 evidence](phase-2-validation.md) record implementation checks. Later implementation phases retain their approval gates.
+**Status: Phases 1 and 2 merged; Phase 3 approved on 2026-09-14.** The user authorized merging the completed phase and proceeding to the next phase, with discretion to defer device verification until the refactor is complete. [Phase 1 PR #4](https://github.com/robinsandborg/trmnl-rm1/pull/4) merged as `dba4fb7`; [Phase 2 PR #5](https://github.com/robinsandborg/trmnl-rm1/pull/5) merged as `54f2fdd`. Phase 3 starts at `54f2fdd` on an isolated branch. [Phase 1 evidence](phase-1-validation.md), [Phase 2 evidence](phase-2-validation.md), and [Phase 3 evidence](phase-3-validation.md) record implementation checks. Later implementation phases retain their approval gates.
 
 Phase 1 is isolated from the shared checkout's uncommitted Wi-Fi SDIO/stock-noise changes and starts at committed `2a86333`. Their integration must retain and extend the baseline (including interface enumeration before MAC fallback); those unrelated changes are not imported here.
 
@@ -54,4 +54,4 @@ Done means tests pass, behavior is matched or explicitly migrated, documentation
 
 ## Next approval gate
 
-After Phase 2's tests, self-review, and PR are complete, stop before Phase 3 — Display package. Device verification is deferred until the completed refactor under the user's 2026-09-14 instruction; it is still outstanding.
+After Phase 3's tests, self-review, and PR are complete, stop before Phase 4 — Storage package. Device verification is deferred until the completed refactor under the user's 2026-09-14 instruction; it is still outstanding.
