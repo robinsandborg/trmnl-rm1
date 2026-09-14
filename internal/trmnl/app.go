@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"github.com/robinsandborg/rm1-trmnl/internal/network"
 	"github.com/robinsandborg/rm1-trmnl/internal/storage"
 	"io"
 	"net/http"
@@ -258,24 +259,11 @@ func (a *App) prepareNetwork(cfg Config) (*http.Client, func(), error) {
 }
 
 func prepareNetworkWithDeps(cfg Config, deps networkDeps) (*http.Client, func(), error) {
-	cleanup := func() {}
-	if cfg.DisableWiFiBetweenUpdates {
-		if err := deps.bringUp(cfg); err != nil {
-			return nil, cleanup, err
-		}
-		cleanup = func() {
-			_ = deps.bringDown(cfg)
-		}
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.wifiTimeout())
-	defer cancel()
-	if err := deps.wait(ctx, cfg); err != nil {
-		cleanup()
-		return nil, func() {}, err
-	}
-
-	return &http.Client{Timeout: cfg.wifiTimeout()}, cleanup, nil
+	return network.Prepare(networkOptions(cfg), network.Operations{
+		BringUp:   func() error { return deps.bringUp(cfg) },
+		BringDown: func() error { return deps.bringDown(cfg) },
+		Wait:      func(ctx context.Context) error { return deps.wait(ctx, cfg) },
+	})
 }
 
 func (a *App) finishCycle(paths Paths, cfg Config, state State, entry CycleLog, err error) error {

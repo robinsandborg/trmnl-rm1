@@ -1,10 +1,10 @@
 //go:build !linux
 
-package trmnl
+package network
 
 import "errors"
 
-func resolveDeviceID(cfg Config) (string, error) {
+func DeviceID(cfg Options) (string, error) {
 	if cfg.DeviceID != "" {
 		return cfg.DeviceID, nil
 	}

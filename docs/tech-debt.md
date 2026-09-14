@@ -30,7 +30,7 @@ Success records `LastMode` before RTC fallback changes the effective mode. A sus
 
 ## TD-05 — Hardware policy and low-level effects are intertwined
 
-**High for extraction risk.** [`network_linux.go`](../internal/trmnl/network_linux.go) combines link control and real-time connectivity polling. The uncommitted implementation observed in Phase 0 additionally mixes systemd, rfkill, SDIO discovery, and fixed sysfs paths; that work is outside this PR. Phase 3 separates portable crop/grayscale/rotation into [`display/prepare.go`](../internal/display/prepare.go) and Linux FBInk effects into [`display/render_linux.go`](../internal/display/render_linux.go), with a command runner supplied by the facade. Pixel and command contracts are captured; physical rendering remains unverified. [`power_linux.go`](../internal/trmnl/power_linux.go) combines battery sampling, runtime observations, RTC writes, timers, and suspend.
+**High for extraction risk.** [`network_linux.go`](../internal/network/network_linux.go) combines link control and real-time connectivity polling. The uncommitted implementation observed in Phase 0 additionally mixes systemd, rfkill, SDIO discovery, and fixed sysfs paths; that work is outside this PR. Phase 3 separates portable crop/grayscale/rotation into [`display/prepare.go`](../internal/display/prepare.go) and Linux FBInk effects into [`display/render_linux.go`](../internal/display/render_linux.go), with a command runner supplied by the facade. Pixel and command contracts are captured; physical rendering remains unverified. [`power_linux.go`](../internal/trmnl/power_linux.go) combines battery sampling, runtime observations, RTC writes, timers, and suspend.
 
 Existing runner/dependency seams in power, runtime mode, and restore provide a starting point. Keep their device-specific ordering: A/B timers must not stop their own service; the resume hook must remain nonblocking; the pending SDIO changes require Wi-Fi re-enumeration before MAC fallback. Historical fixes `379df59`, `0ccf51d`, and `2d6db09` show these orderings have already mattered. Move one cohesive module at a time and verify command traces plus actual device behavior where applicable.
 
@@ -61,3 +61,7 @@ Follow [the strangler plan](refactoring-plan.md): establish behavioral evidence,
 ## Phase 4 status
 
 Storage file layout and I/O are extracted behind the existing DTOs and defaults. State/log golden fixtures, missing/malformed JSON, cache bytes, modes, and encode/open failure ordering are covered. TD-03 durability, locking, and metadata lifecycle behavior remain unchanged. See [Phase 4 validation](phase-4-validation.md).
+
+## Phase 5 status
+
+Network acquisition, identity, and link/connectivity operations are extracted. Command/identity/connectivity tests complement the existing cycle cleanup corpus. Pending shared-checkout SDIO changes remain outside extraction; enumeration-before-validation and repeated physical Wi-Fi cycles must be resolved in final device verification. See [validation](phase-5-validation.md).
