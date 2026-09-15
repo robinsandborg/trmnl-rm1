@@ -4,11 +4,13 @@ Updated for completed extraction on 2026-09-14. The shared checkout's uncommitte
 
 ## Shape and entrypoints
 
-One Go module, `github.com/robinsandborg/rm1-trmnl`, declares Go 1.26 and depends on `golang.org/x/image v0.39.0` for BMP decoding. Nine packages form the implementation:
+One Go module, `github.com/robinsandborg/rm1-trmnl`, declares Go 1.26 and depends on `golang.org/x/image v0.39.0` for BMP decoding. Eleven packages form the implementation:
 
 | Package | Responsibility |
 | --- | --- |
 | `cmd/trmnl-rm1` | Process entrypoint. |
+| `cmd/trmnl-power-report` | Standalone read-only cycle-log report entrypoint. |
+| `internal/diagnostics` | Filtered cycle summaries and sampled discharge windows, with private log fields omitted. |
 | `internal/trmnl` | CLI compatibility, persisted DTOs/defaults, and composition adapters. |
 | `internal/cycle` | One-shot state transitions, refresh cadence, effects ordering, and failure finalization. |
 | `internal/byos` | HTTP display/image exchange and refresh interval policy. |
@@ -18,11 +20,12 @@ One Go module, `github.com/robinsandborg/rm1-trmnl`, declares Go 1.26 and depend
 | `internal/power` | Runtime mode, battery, RTC/awake scheduling, and suspend. |
 | `internal/appliance` | Install/restore sequencing, stock-service snapshot, and artifact templates. |
 
-Dependencies flow from the executable through `trmnl` to the internal modules. `cycle` uses display and power value types and receives composed operations; no extracted module imports `trmnl`. There is no Makefile. [CI](../.github/workflows/checks.yml) runs macOS/Linux tests and vet plus ARMv7 executable/test compilation.
+Appliance dependencies flow from the executable through `trmnl` to the internal modules. `cycle` uses display and power value types and receives composed operations; no extracted module imports `trmnl`. The separate `trmnl-power-report` executable uses only `diagnostics` and the standard library, without runtime/device effects. There is no Makefile. [CI](../.github/workflows/checks.yml) runs macOS/Linux tests and vet plus ARMv7 compilation of both executables and all package tests.
 
 | Entrypoint | Implementation and effects |
 | --- | --- |
 | CLI process | [`cmd/trmnl-rm1/main.go`](../cmd/trmnl-rm1/main.go) constructs `trmnl.NewApp`, calls `Run`, prints errors to stderr, exits 1 on error. |
+| `trmnl-power-report` | [`cmd/trmnl-power-report/main.go`](../cmd/trmnl-power-report/main.go) reads JSONL from stdin, accepts optional RFC3339 `-since`/`-until` boundaries, and emits versioned redacted JSON. No config/state/device writes. See [battery measurement](battery-life.md). |
 | Command dispatch | [`App.Run`](../internal/trmnl/app.go) resolves XDG paths and creates runtime directories before dispatch, including for invalid commands. |
 | `validate` | Loads defaults and JSON, validates effective configuration and device identity; prints `config is valid`. |
 | `print-device-id` | Prints configured identity or Linux wireless MAC fallback. |
@@ -103,10 +106,13 @@ Run from the repository root. These build/test commands do not install the appli
 
 ```sh
 go build -o /tmp/trmnl-rm1-host ./cmd/trmnl-rm1
+go build -o /tmp/trmnl-power-report-host ./cmd/trmnl-power-report
 go test -count=1 -race -cover ./...
 go vet ./...
 GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 \
   go build -trimpath -ldflags='-s -w' -o /tmp/trmnl-rm1-arm ./cmd/trmnl-rm1
+GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 \
+  go build -trimpath -ldflags='-s -w' -o /tmp/trmnl-power-report-arm ./cmd/trmnl-power-report
 mkdir -p /tmp/trmnl-arm-tests
 GOOS=linux GOARCH=arm GOARM=7 CGO_ENABLED=0 \
   go test -c -o /tmp/trmnl-arm-tests/ ./...
