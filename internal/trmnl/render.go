@@ -10,6 +10,7 @@ func renderImage(cfg Config, imageBytes []byte, outputPath string, mode RefreshM
 		Height:          cfg.displayHeight(),
 		Rotation:        cfg.fbinkRotation(),
 		SkipRotation:    cfg.FBInkSkipRotation,
+		RawRotation:     cfg.FBInkRawRotation,
 		RendererCommand: cfg.RendererCommand,
 		FBInkBinary:     cfg.fbinkBinary(),
 		FBDepthBinary:   cfg.fbdepthBinary(),

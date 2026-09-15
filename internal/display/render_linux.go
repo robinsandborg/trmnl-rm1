@@ -67,12 +67,16 @@ func prepareFBInkFramebuffer(opts Options, run CommandRunner) error {
 	}, nil); err != nil {
 		return err
 	}
-	if opts.SkipRotation {
+	if opts.SkipRotation && !opts.RawRotation {
 		return nil
+	}
+	rotationFlag := "-R"
+	if opts.RawRotation {
+		rotationFlag = "-r"
 	}
 	if err := run([]string{
 		opts.FBDepthBinary,
-		"-R",
+		rotationFlag,
 		strconv.Itoa(opts.Rotation),
 	}, nil); err != nil {
 		if strings.Contains(err.Error(), "not supported on your device") {

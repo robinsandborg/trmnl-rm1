@@ -56,24 +56,39 @@ func runInstallWithDeps(paths Paths, args []string, deps installDeps) error {
 		return err
 	}
 
+	if err := finishRestore(paths); err != nil {
+		return err
+	}
 	state, err := loadState(paths)
 	if err != nil {
 		return err
 	}
 
-	return appliance.Install(snapshot(state), appliance.InstallDeps{UnitExists: deps.unitExists, Warn: deps.warn,
+	saved, err := hasInstallationSnapshot(paths)
+	if err != nil {
+		return err
+	}
+	metaSnapshot := snapshot(state)
+	metaSnapshot.Recorded = saved
+	return appliance.Install(metaSnapshot, appliance.InstallDeps{UnitExists: deps.unitExists, Warn: deps.warn,
 		WriteFile: deps.writeFile, Executable: deps.executable, SleepHookDir: deps.sleepHookDir, StockSyncUnit: deps.stockSyncUnit, UnitEnabled: deps.unitEnabled, Run: deps.run,
 		SaveState: func(meta appliance.Snapshot) error {
 			state.MaskedNoise = meta.MaskedNoise
 			state.StockSyncUnit = meta.StockSyncUnit
 			state.SyncWasEnabled = meta.SyncWasEnabled
 			state.XochitlWasEnabled = meta.XochitlWasEnabled
+			if err := saveInstallationSnapshot(paths, state); err != nil {
+				return err
+			}
 			return deps.saveState(paths, state)
 		},
 	})
 }
 
 func (a *App) runRestore(paths Paths) error {
+	if err := beginRestore(paths); err != nil {
+		return err
+	}
 	state, err := loadState(paths)
 	if err != nil {
 		return err
@@ -82,12 +97,17 @@ func (a *App) runRestore(paths Paths) error {
 	// Stock mode must regain the radio that appliance cleanup unbound.
 	// Invalid app configuration must not prevent restoring the stock UI.
 	cfg, _ := loadConfig(paths)
-	return runRestoreWithOps(state, applianceOps{
+	err = runRestoreWithOps(state, applianceOps{
+		acquireCycleLock:   func() (func(), error) { return lockForRestore(paths) },
 		restoreNetwork:     func() error { return network.BringUp(networkOptions(cfg), runCommand) },
 		run:                runCommand,
 		remove:             os.Remove,
 		detectSleepHookDir: detectSleepHookDir,
 	})
+	if err != nil {
+		return err
+	}
+	return finishRestore(paths)
 }
 
 func detectSleepHookDir() (string, error)        { return appliance.DetectSleepHookDir() }

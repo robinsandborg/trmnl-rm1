@@ -10,11 +10,16 @@ import (
 )
 
 type Options struct {
+	Recovery                           bool
+	BootID                             string
+	BatteryPolicy                      power.BatteryPolicy
 	DownloadedImage, LastRenderedImage string
 	FullRefreshEvery, FailureThreshold int
 	RefreshFallback                    time.Duration
 }
 type Operations struct {
+	ReadFile       func(string) ([]byte, error)
+	Shutdown       func() error
 	Now            func() time.Time
 	ReadBattery    func() (*power.BatterySample, error)
 	DetermineMode  func(State, time.Time) (power.Mode, error)
@@ -35,6 +40,11 @@ type Error struct {
 func (e *Error) Error() string { return e.Err.Error() }
 
 type State struct {
+	ScheduleBootID      string          `json:"schedule_boot_id,omitempty"`
+	BootID              string          `json:"boot_id,omitempty"`
+	LocalScreen         string          `json:"local_screen,omitempty"`
+	BatteryLow          bool            `json:"battery_low,omitempty"`
+	NextAttemptAt       time.Time       `json:"next_attempt_at,omitzero"`
 	MaskedNoise         map[string]bool `json:"masked_noise,omitempty"`
 	LastImageHash       string          `json:"last_image_hash,omitempty"`
 	LastImageURL        string          `json:"last_image_url,omitempty"`

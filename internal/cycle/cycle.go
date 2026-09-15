@@ -10,9 +10,28 @@ import (
 	"github.com/robinsandborg/rm1-trmnl/internal/display"
 )
 
-func Run(opts Options, state State, ops Operations) error {
+func Run(opts Options, state State, ops Operations) (result error) {
 	startedAt := ops.Now().UTC()
 	battery, _ := ops.ReadBattery()
+	criticalShutdown := false
+	failuresBefore := state.ConsecutiveFailures
+	if opts.Recovery {
+		defer func() {
+			if result != nil && !criticalShutdown {
+				state.ConsecutiveFailures = failuresBefore
+				result = recoverCycle(opts, ops, state, battery, startedAt, result)
+			}
+		}()
+	}
+	if opts.Recovery {
+		state.ScheduleBootID = opts.BootID
+		decision := opts.BatteryPolicy.Decide(battery, state.BatteryLow)
+		criticalShutdown = decision.Shutdown
+		state.BatteryLow = decision.Low
+		if decision.Low {
+			return batteryCycle(opts, ops, &state, battery, decision, startedAt)
+		}
+	}
 	runtimeMode, err := ops.DetermineMode(state, ops.Now())
 	if err != nil {
 		return err
@@ -52,12 +71,14 @@ func Run(opts Options, state State, ops Operations) error {
 	}
 
 	hashValue := sha256Hex(imageBytes)
-	changed := hashValue != state.LastImageHash
+	changed := hashValue != state.LastImageHash || (opts.Recovery && (state.BootID != opts.BootID || state.LocalScreen != ""))
 	skipped := !changed
-	fullRefresh := changed && ShouldUseFullRefresh(state.RenderedUpdates, opts.FullRefreshEvery)
+	fullRefresh := changed && (ShouldUseFullRefresh(state.RenderedUpdates, opts.FullRefreshEvery) || (opts.Recovery && (state.BootID != opts.BootID || state.LocalScreen != "")))
 
-	if err := ops.WriteFile(opts.DownloadedImage, imageBytes, 0o600); err != nil {
-		return err
+	if !opts.Recovery {
+		if err := ops.WriteFile(opts.DownloadedImage, imageBytes, 0o600); err != nil {
+			return err
+		}
 	}
 
 	if changed {
@@ -85,8 +106,20 @@ func Run(opts Options, state State, ops Operations) error {
 		state.LastImageURL = resolvedImageURL
 		state.LastFilename = filename
 		state.RenderedUpdates++
+		if opts.Recovery {
+			state.BootID = opts.BootID
+			state.LocalScreen = ""
+		}
 	}
 
+	if opts.Recovery {
+		if err := ops.WriteFile(opts.DownloadedImage, imageBytes, 0o600); err != nil {
+			return err
+		}
+	}
+	if opts.Recovery {
+		state.NextAttemptAt = ops.Now().Add(interval)
+	}
 	state.LastCycleChanged = changed
 	state.LastIntervalSeconds = int(interval.Seconds())
 	state.LastMode = runtimeMode.Name
@@ -161,6 +194,9 @@ func Run(opts Options, state State, ops Operations) error {
 }
 
 func finish(opts Options, ops Operations, state State, entry CycleLog, err error) error {
+	if opts.Recovery {
+		return err
+	}
 	ended := ops.Now().UTC()
 	entry.EndedAt = ended
 	state.LastFailureAt = ended

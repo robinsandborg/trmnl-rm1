@@ -114,8 +114,10 @@ func TestRunRestoreWithOpsAggregatesCleanupAndCommandFailures(t *testing.T) {
 	}
 
 	wantRunCalls := []string{
+		"systemctl disable --now trmnl-rm1-recovery.timer",
+
 		"systemctl disable --now " + applianceServiceName,
-		"systemctl daemon-reload",
+		"systemctl daemon-reload", "systemctl stop trmnl-rm1-next-a.service", "systemctl stop trmnl-rm1-next-b.service", "systemctl stop trmnl-rm1-next-a.timer", "systemctl stop trmnl-rm1-next-a.service", "systemctl stop trmnl-rm1-next-b.timer", "systemctl stop trmnl-rm1-next-b.service",
 		"systemctl unmask xochitl.service",
 		"systemctl enable --now xochitl.service",
 		"systemctl unmask sync.service",
@@ -126,8 +128,9 @@ func TestRunRestoreWithOpsAggregatesCleanupAndCommandFailures(t *testing.T) {
 	}
 
 	wantRemoved := []string{
-		applianceServicePath,
+		"/etc/systemd/system/trmnl-rm1-recovery.timer",
 		filepath.Join("/system-sleep", applianceResumeHookName),
+		applianceServicePath,
 	}
 	if !reflect.DeepEqual(removed, wantRemoved) {
 		t.Fatalf("removed = %#v, want %#v", removed, wantRemoved)
@@ -159,8 +162,10 @@ func TestRunRestoreWithOpsIgnoresMissingFilesAndRespectsSyncState(t *testing.T) 
 	}
 
 	wantRunCalls := []string{
+		"systemctl disable --now trmnl-rm1-recovery.timer",
+
 		"systemctl disable --now " + applianceServiceName,
-		"systemctl daemon-reload",
+		"systemctl daemon-reload", "systemctl stop trmnl-rm1-next-a.service", "systemctl stop trmnl-rm1-next-b.service", "systemctl stop trmnl-rm1-next-a.timer", "systemctl stop trmnl-rm1-next-a.service", "systemctl stop trmnl-rm1-next-b.timer", "systemctl stop trmnl-rm1-next-b.service",
 		"systemctl unmask xochitl.service",
 		"systemctl enable --now xochitl.service",
 		"systemctl unmask sync.service",
@@ -170,8 +175,9 @@ func TestRunRestoreWithOpsIgnoresMissingFilesAndRespectsSyncState(t *testing.T) 
 	}
 
 	wantRemoved := []string{
-		applianceServicePath,
+		"/etc/systemd/system/trmnl-rm1-recovery.timer",
 		filepath.Join("/system-sleep", applianceResumeHookName),
+		applianceServicePath,
 	}
 	if !reflect.DeepEqual(removed, wantRemoved) {
 		t.Fatalf("removed = %#v, want %#v", removed, wantRemoved)
@@ -202,8 +208,10 @@ func TestRunRestoreWithOpsReportsSleepHookLookupFailure(t *testing.T) {
 	}
 
 	wantRunCalls := []string{
+		"systemctl disable --now trmnl-rm1-recovery.timer",
+
 		"systemctl disable --now " + applianceServiceName,
-		"systemctl daemon-reload",
+		"systemctl daemon-reload", "systemctl stop trmnl-rm1-next-a.service", "systemctl stop trmnl-rm1-next-b.service", "systemctl stop trmnl-rm1-next-a.timer", "systemctl stop trmnl-rm1-next-a.service", "systemctl stop trmnl-rm1-next-b.timer", "systemctl stop trmnl-rm1-next-b.service",
 		"systemctl unmask xochitl.service",
 		"systemctl enable --now xochitl.service",
 	}

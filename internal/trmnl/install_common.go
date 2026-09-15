@@ -9,6 +9,7 @@ const (
 )
 
 type applianceOps struct {
+	acquireCycleLock   func() (func(), error)
 	restoreNetwork     func() error
 	run                func([]string) error
 	remove             func(string) error
@@ -22,5 +23,5 @@ func disableForApplianceWithRunner(run func([]string) error, unit string) error 
 	return appliance.Disable(run, unit)
 }
 func runRestoreWithOps(state State, ops applianceOps) error {
-	return appliance.Restore(snapshot(state), appliance.RestoreOps{RestoreNetwork: ops.restoreNetwork, Run: ops.run, Remove: ops.remove, SleepHookDir: ops.detectSleepHookDir})
+	return appliance.Restore(snapshot(state), appliance.RestoreOps{AcquireCycleLock: ops.acquireCycleLock, RestoreNetwork: ops.restoreNetwork, Run: ops.run, Remove: ops.remove, SleepHookDir: ops.detectSleepHookDir})
 }

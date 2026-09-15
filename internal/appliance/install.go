@@ -9,6 +9,7 @@ import (
 )
 
 type Snapshot struct {
+	Recorded                          bool
 	MaskedNoise                       map[string]bool
 	StockSyncUnit                     string
 	SyncWasEnabled, XochitlWasEnabled bool
@@ -39,6 +40,9 @@ func Install(state Snapshot, deps InstallDeps) error {
 	if err := deps.WriteFile(ServicePath, []byte(RenderService(exePath)), 0o644); err != nil {
 		return err
 	}
+	if err := deps.WriteFile(RecoveryTimerPath, []byte(RenderRecoveryTimer()), 0o644); err != nil {
+		return err
+	}
 	if err := deps.WriteFile(hookPath, []byte(RenderResumeHook()), 0o755); err != nil {
 		return err
 	}
@@ -47,23 +51,12 @@ func Install(state Snapshot, deps InstallDeps) error {
 	if err != nil {
 		return err
 	}
-	if state.StockSyncUnit == "" && state.MaskedNoise == nil && !state.XochitlWasEnabled {
+	if !state.Recorded && state.StockSyncUnit == "" && state.MaskedNoise == nil && !state.XochitlWasEnabled {
 		state.StockSyncUnit = syncUnit
 		state.SyncWasEnabled = syncEnabled
 		state.XochitlWasEnabled = deps.UnitEnabled("xochitl.service")
 	}
 
-	if err := deps.Run([]string{"systemctl", "daemon-reload"}); err != nil {
-		return err
-	}
-	if err := Disable(deps.Run, "xochitl.service"); err != nil {
-		return err
-	}
-	if syncUnit != "" {
-		if err := Disable(deps.Run, syncUnit); err != nil {
-			return err
-		}
-	}
 	if deps.UnitExists != nil {
 		saved := make(map[string]bool, len(state.MaskedNoise))
 		for unit, enabled := range state.MaskedNoise {
@@ -76,22 +69,38 @@ func Install(state Snapshot, deps InstallDeps) error {
 			if _, ok := saved[unit]; !ok {
 				saved[unit] = deps.UnitEnabled(unit)
 			}
-			if err := Disable(deps.Run, unit); err != nil && deps.Warn != nil {
-				deps.Warn(err)
-			}
 		}
 		if len(saved) > 0 {
 			state.MaskedNoise = saved
 		}
 	}
+	// Capture every original choice durably before the first mask operation.
+	if err := deps.SaveState(state); err != nil {
+		return err
+	}
+	if err := deps.Run([]string{"systemctl", "daemon-reload"}); err != nil {
+		return err
+	}
+	if err := Disable(deps.Run, "xochitl.service"); err != nil {
+		return err
+	}
+	if syncUnit != "" {
+		if err := Disable(deps.Run, syncUnit); err != nil {
+			return err
+		}
+	}
+	for _, unit := range stockNoiseUnits {
+		if _, ok := state.MaskedNoise[unit]; ok {
+			if err := Disable(deps.Run, unit); err != nil && deps.Warn != nil {
+				deps.Warn(err)
+			}
+		}
+	}
 	if err := deps.Run([]string{"systemctl", "enable", ServiceName}); err != nil {
 		return err
 	}
-	// Persist stock-service metadata before the first run. `systemctl start`
-	// on a oneshot service blocks until the service exits, and run-once
-	// saves its own state at the end of that run. If we save after the start
-	// call instead, we overwrite whatever run-once just persisted.
-	if err := deps.SaveState(state); err != nil {
+
+	if err := deps.Run([]string{"systemctl", "enable", "--now", RecoveryTimerName}); err != nil {
 		return err
 	}
 	return deps.Run([]string{"systemctl", "start", ServiceName})
@@ -117,7 +126,8 @@ RequiresMountsFor=/home/root
 [Service]
 Type=oneshot
 Environment=HOME=/home/root
-ExecStart=%s run-once
+ExecStart=%s run-scheduled
+TimeoutStartSec=5min
 User=root
 
 [Install]
@@ -159,4 +169,20 @@ func UnitExists(outputCommand func([]string) (string, error), unit string) bool 
 func UnitEnabled(outputCommand func([]string) (string, error), unit string) bool {
 	out, err := outputCommand([]string{"systemctl", "is-enabled", unit})
 	return err == nil && out == "enabled"
+}
+
+const RecoveryTimerName = "trmnl-rm1-recovery.timer"
+const RecoveryTimerPath = "/etc/systemd/system/" + RecoveryTimerName
+
+func RenderRecoveryTimer() string {
+	return `[Unit]
+Description=TRMNL recovery safety timer
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=5min
+AccuracySec=30s
+Unit=trmnl-rm1-appliance.service
+[Install]
+WantedBy=timers.target
+`
 }

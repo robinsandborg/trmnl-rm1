@@ -2,6 +2,7 @@ package trmnl
 
 import (
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/robinsandborg/rm1-trmnl/internal/cycle"
@@ -11,7 +12,9 @@ import (
 
 func (a *App) cycleOperations(paths Paths, cfg Config) cycle.Operations {
 	return cycle.Operations{
-		Now: a.now,
+		ReadFile: os.ReadFile,
+		Shutdown: a.cycle.shutdown,
+		Now:      a.now,
 		ReadBattery: func() (*power.BatterySample, error) {
 			v, err := a.cycle.readBatterySample(cfg)
 			return (*power.BatterySample)(v), err
